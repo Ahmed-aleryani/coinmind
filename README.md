@@ -81,6 +81,7 @@ Ask questions about your finances:
 - **Database**: SQLite with better-sqlite3
 - **Styling**: Tailwind CSS with custom design system
 - **Charts**: Recharts for data visualization
+- **Development**: Built with Cursor IDE and AI-powered development
 
 ### Project Structure
 ```
@@ -154,6 +155,7 @@ Customize AI behavior by modifying prompts in `src/lib/api/gemini.ts`:
 
 ## 🚧 Roadmap
 
+- [ ] **Database Migration**: Migrate from local SQLite to remote database (MongoDB or Supabase)
 - [ ] Multi-currency support
 - [ ] Bank account integration (Plaid)
 - [ ] Budget setting and tracking
@@ -163,6 +165,10 @@ Customize AI behavior by modifying prompts in `src/lib/api/gemini.ts`:
 - [ ] Advanced analytics dashboard
 - [ ] Multi-user support
 - [ ] Mobile app (React Native)
+
+## 🏆 Hackathon Project
+
+This project was built during the [Cursor Tallinn Hackathon](https://lu.ma/edajc7xj?tk=LxhbIU), a hands-on hack night focused on building and experimenting with Cursor's autonomous AI agent. The event brought together developers of all skill levels to explore what's possible with AI-powered development tools.
 
 ## 🤝 Contributing
 
@@ -191,33 +197,80 @@ If you encounter any issues:
 1. Check that your Gemini API key is configured correctly
 2. Ensure the `data/` directory exists and is writable
 3. Check the console for any error messages
-4. Review the [troubleshooting guide](docs/troubleshooting.md)
+4. Review the [troubleshooting guide](#-troubleshooting)
 
 For bugs and feature requests, please open an issue on GitHub.
 
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+#### 1. Gemini API Key Issues
+**Problem**: API requests failing with authentication errors
+**Solution**: 
+- Verify your API key is correct in `.env.local`
+- Check that your API key has the necessary permissions
+- Ensure there are no extra spaces or characters in the key
+
+#### 2. Database Connection Issues
+**Problem**: SQLite database errors or file not found
+**Solution**:
+- Ensure the `data/` directory exists in your project root
+- Check file permissions - the app needs read/write access
+- Delete the database file and restart to regenerate with sample data
+
+#### 3. Development Server Issues
+**Problem**: Server won't start or crashes
+**Solution**:
+- Clear Next.js cache: `rm -rf .next`
+- Delete node_modules and reinstall: `rm -rf node_modules && npm install`
+- Check for port conflicts (default is 3000)
+
+#### 4. Chat Not Responding
+**Problem**: Chat interface loads but doesn't respond to messages
+**Solution**:
+- Check browser console for JavaScript errors
+- Verify your Gemini API key is working
+- Check network tab for failed API requests
+- Ensure you're not hitting API rate limits
+
+#### 5. CSV Import Issues
+**Problem**: CSV files not importing correctly
+**Solution**:
+- Ensure CSV has headers (Date, Description, Amount)
+- Check date format (YYYY-MM-DD preferred)
+- Verify amounts are numeric (no currency symbols)
+- File size should be under 10MB
+
+#### 6. Receipt OCR Not Working
+**Problem**: Receipt images not being processed
+**Solution**:
+- Use clear, high-quality images
+- Ensure good lighting and minimal shadows
+- Supported formats: JPG, PNG, WebP
+- Maximum file size: 5MB
+
+#### 7. Build/Production Issues
+**Problem**: App works in development but fails in production
+**Solution**:
+- Run `npm run build` to check for build errors
+- Verify all environment variables are set in production
+- Check that the database path is accessible in production
+- Ensure static files are properly served
+
+### Getting Help
+
+If you're still experiencing issues:
+
+1. **Check the logs**: Look at both browser console and terminal output
+2. **Verify environment**: Ensure all required environment variables are set
+3. **Test API key**: Try making a direct request to Gemini API
+4. **Clean install**: Delete `node_modules`, `.next`, and reinstall
+5. **GitHub Issues**: Search existing issues or create a new one with:
+   - Error messages
+   - Steps to reproduce
+   - Environment details (OS, Node version, etc.)
+
 ---
 
-Built with ❤️ using Next.js and Google Gemini AI
-
-## License
-
-This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
-
-This means you are free to:
-- Use the software for any purpose
-- Study how the software works
-- Share copies of the software
-- Modify the software and share your modifications
-
-**Important**: Any derivative works or modifications must also be released under the GPL-3.0 license, ensuring that improvements benefit the entire community.
-
-See the [LICENSE](LICENSE) file for the full license text.
-
-### Why GPL-3.0?
-
-We chose GPL-3.0 because we believe in:
-- **Community collaboration**: Ensuring that improvements are shared back with everyone
-- **Software freedom**: Preventing proprietary forks that don't contribute back
-- **Long-term sustainability**: Building a thriving open source ecosystem
-
-If you're using this software in your project, please ensure compliance with the GPL-3.0 terms.
+Built with ❤️ using Next.js, Google Gemini AI, and Cursor IDE during the [Cursor Tallinn Hackathon](https://lu.ma/edajc7xj?tk=LxhbIU)
