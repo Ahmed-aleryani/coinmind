@@ -1,5 +1,7 @@
 # CoinMind - AI-Powered Personal Finance Tracker
 
+> 🏆 **Hackathon Project**: Built during the [Cursor Tallinn Hackathon](https://lu.ma/edajc7xj?tk=LxhbIU) using Cursor IDE and AI-powered development tools.
+
 A modern, conversational finance tracking application built with Next.js 15, TypeScript, and Google Gemini AI. Track your expenses and income through natural language conversations, upload receipts, import CSV files, and get AI-powered insights about your financial health.
 
 ## ✨ Features
@@ -16,7 +18,7 @@ A modern, conversational finance tracking application built with Next.js 15, Typ
 
 ### Prerequisites
 
-- Node.js 18+ and npm/pnpm
+- Node.js 18+ and pnpm
 - Google Gemini API key ([Get one here](https://aistudio.google.com/app/apikey))
 
 ### Installation
@@ -25,7 +27,7 @@ A modern, conversational finance tracking application built with Next.js 15, Typ
    ```bash
    git clone git@github.com:Ahmed-aleryani/coinmind.git
    cd coinmind
-   npm install
+   pnpm install
    ```
 
 2. **Set up environment variables:**
@@ -41,7 +43,7 @@ A modern, conversational finance tracking application built with Next.js 15, Typ
 
 3. **Start the development server:**
    ```bash
-   npm run dev
+   pnpm dev
    ```
 
 4. **Open [http://localhost:3000](http://localhost:3000)** to see the application.
@@ -107,11 +109,11 @@ src/
 ## 🛠️ Development
 
 ### Available Scripts
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run start` - Start production server
-- `npm run lint` - Run ESLint
-- `npm run type-check` - Run TypeScript checks
+- `pnpm dev` - Start development server
+- `pnpm build` - Build for production
+- `pnpm start` - Start production server
+- `pnpm lint` - Run ESLint
+- `pnpm type-check` - Run TypeScript checks
 
 ### Database Schema
 The app uses SQLite with two main tables:
@@ -166,9 +168,7 @@ Customize AI behavior by modifying prompts in `src/lib/api/gemini.ts`:
 - [ ] Multi-user support
 - [ ] Mobile app (React Native)
 
-## 🏆 Hackathon Project
 
-This project was built during the [Cursor Tallinn Hackathon](https://lu.ma/edajc7xj?tk=LxhbIU), a hands-on hack night focused on building and experimenting with Cursor's autonomous AI agent. The event brought together developers of all skill levels to explore what's possible with AI-powered development tools.
 
 ## 🤝 Contributing
 
@@ -223,7 +223,7 @@ For bugs and feature requests, please open an issue on GitHub.
 **Problem**: Server won't start or crashes
 **Solution**:
 - Clear Next.js cache: `rm -rf .next`
-- Delete node_modules and reinstall: `rm -rf node_modules && npm install`
+- Delete node_modules and reinstall: `rm -rf node_modules && pnpm install`
 - Check for port conflicts (default is 3000)
 
 #### 4. Chat Not Responding
@@ -253,7 +253,7 @@ For bugs and feature requests, please open an issue on GitHub.
 #### 7. Build/Production Issues
 **Problem**: App works in development but fails in production
 **Solution**:
-- Run `npm run build` to check for build errors
+- Run `pnpm build` to check for build errors
 - Verify all environment variables are set in production
 - Check that the database path is accessible in production
 - Ensure static files are properly served
