@@ -1,4 +1,4 @@
-# FinanceChat - AI-Powered Personal Finance Tracker
+# CoinMind - AI-Powered Personal Finance Tracker
 
 A modern, conversational finance tracking application built with Next.js 15, TypeScript, and Google Gemini AI. Track your expenses and income through natural language conversations, upload receipts, import CSV files, and get AI-powered insights about your financial health.
 
@@ -23,8 +23,8 @@ A modern, conversational finance tracking application built with Next.js 15, Typ
 
 1. **Clone and install dependencies:**
    ```bash
-   git clone <your-repo-url>
-   cd cursor-event
+   git clone git@github.com:Ahmed-aleryani/coinmind.git
+   cd coinmind
    npm install
    ```
 
@@ -198,26 +198,3 @@ For bugs and feature requests, please open an issue on GitHub.
 ---
 
 Built with ❤️ using Next.js and Google Gemini AI
-
-## License
-
-This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
-
-This means you are free to:
-- Use the software for any purpose
-- Study how the software works
-- Share copies of the software
-- Modify the software and share your modifications
-
-**Important**: Any derivative works or modifications must also be released under the GPL-3.0 license, ensuring that improvements benefit the entire community.
-
-See the [LICENSE](LICENSE) file for the full license text.
-
-### Why GPL-3.0?
-
-We chose GPL-3.0 because we believe in:
-- **Community collaboration**: Ensuring that improvements are shared back with everyone
-- **Software freedom**: Preventing proprietary forks that don't contribute back
-- **Long-term sustainability**: Building a thriving open source ecosystem
-
-If you're using this software in your project, please ensure compliance with the GPL-3.0 terms.
