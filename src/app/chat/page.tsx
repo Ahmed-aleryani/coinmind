@@ -48,6 +48,62 @@ export default function ChatPage() {
           </ul>
         </div>
       </div>
+
+      {/* Simple Sentences in Different Languages */}
+      <div className="mt-6 bg-green-50 dark:bg-green-950/20 rounded-lg p-4">
+        <h3 className="font-semibold mb-3 text-green-700 dark:text-green-300">
+          💬 Simple Phrases You Can Try
+        </h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div>
+            <h4 className="font-medium mb-2 text-sm">Adding Transactions:</h4>
+            <div className="space-y-2 text-xs">
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">English:</span> "I spent $50 on groceries"
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">العربية:</span> "دفعت 200 ريال على الطعام"
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">Español:</span> "Gasté 25 euros en gasolina"
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">Français:</span> "J'ai dépensé 30 euros pour l'essence"
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">Deutsch:</span> "Ich habe 40 Euro für Lebensmittel ausgegeben"
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">中文:</span> "我花了100元买食物"
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            <h4 className="font-medium mb-2 text-sm">Asking Questions:</h4>
+            <div className="space-y-2 text-xs">
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">English:</span> "How much did I spend this month?"
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">العربية:</span> "كم أنفقت هذا الشهر؟"
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">Español:</span> "¿Cuánto gasté este mes?"
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">Français:</span> "Combien ai-je dépensé ce mois-ci?"
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">Deutsch:</span> "Wie viel habe ich diesen Monat ausgegeben?"
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium">中文:</span> "我这个月花了多少钱？"
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       
       <div className="mt-6 bg-blue-50 dark:bg-blue-950/20 rounded-lg p-4">
         <h3 className="font-semibold mb-2 text-blue-700 dark:text-blue-300">
@@ -71,6 +127,36 @@ export default function ChatPage() {
               <li>• Localized formatting</li>
               <li>• RTL support for Arabic</li>
             </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Help Section */}
+      <div className="mt-6 bg-purple-50 dark:bg-purple-950/20 rounded-lg p-4">
+        <h3 className="font-semibold mb-3 text-purple-700 dark:text-purple-300">
+          🚀 Quick Start Guide
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="text-center">
+            <div className="text-2xl mb-2">1️⃣</div>
+            <h4 className="font-medium mb-1">Type or Speak</h4>
+            <p className="text-xs text-muted-foreground">
+              Write your message in any language or use voice input
+            </p>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl mb-2">2️⃣</div>
+            <h4 className="font-medium mb-1">Get Response</h4>
+            <p className="text-xs text-muted-foreground">
+              CoinMind will understand and help you manage finances
+            </p>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl mb-2">3️⃣</div>
+            <h4 className="font-medium mb-1">Track Progress</h4>
+            <p className="text-xs text-muted-foreground">
+              View your transactions and financial insights
+            </p>
           </div>
         </div>
       </div>
