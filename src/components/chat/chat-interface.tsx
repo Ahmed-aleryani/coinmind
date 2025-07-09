@@ -100,6 +100,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [voiceLang, setVoiceLang] = useState('en-US'); // Language selector for voice input
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -128,7 +129,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = true;
-      recognition.lang = 'en-US';
+      recognition.lang = voiceLang; // Use selected language
       
       recognition.onstart = () => {
         setIsListening(true);
@@ -181,7 +182,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         recognitionRef.current.stop();
       }
     };
-  }, []);
+  }, [voiceLang]); // Add voiceLang to dependency array
 
   const sendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
@@ -308,6 +309,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       try {
         // Request microphone permission first
         await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Set recognition language before starting
+        recognitionRef.current.lang = voiceLang;
         recognitionRef.current?.start();
       } catch (error) {
         console.error('Failed to start speech recognition:', error);
@@ -579,6 +582,20 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
       <div className="border-t p-4">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
+          <div className="flex items-center gap-2 mb-2">
+            <label htmlFor="voice-lang-select" className="text-sm font-medium">Voice Language:</label>
+            <select
+              id="voice-lang-select"
+              value={voiceLang}
+              onChange={e => setVoiceLang(e.target.value)}
+              className="border rounded px-2 py-1 text-sm"
+              disabled={isLoading}
+            >
+              <option value="en-US">English</option>
+              <option value="ar-SA">العربية</option>
+              {/* Add more languages as needed */}
+            </select>
+          </div>
           <div className="flex gap-2 items-end">
             <div className="flex-1 relative">
               <TextareaAutosize
