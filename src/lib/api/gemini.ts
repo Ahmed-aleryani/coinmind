@@ -47,14 +47,16 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       قم بتحليل الرسالة بعناية واستخرج:
       1. المبلغ (مع الإشارة الصحيحة: موجب للدخل/الأرباح، سالب للمصروفات)
-      2. البائع/المصدر (من أين حصلت على المال أو دفعته)
-      3. الوصف (ما كان المعاملة من أجله)
-      4. التاريخ (استخدم تاريخ اليوم دائماً ما لم يذكر المستخدم تاريخاً مختلفاً)
-      5. الفئة (اختر الأنسب)
+      2. العملة (ريال، دولار، يورو، إلخ - استخدم "SAR" للريال السعودي)
+      3. البائع/المصدر (من أين حصلت على المال أو دفعته)
+      4. الوصف (ما كان المعاملة من أجله)
+      5. التاريخ (استخدم تاريخ اليوم دائماً ما لم يذكر المستخدم تاريخاً مختلفاً)
+      6. الفئة (اختر الأنسب)
       
       أعد فقط كائن JSON بهذه الحقول (استخدم null للبيانات المفقودة):
       {
         "amount": number (موجب للدخل، سالب للمصروفات),
+        "currency": string (رمز العملة مثل "SAR", "USD", "EUR"),
         "vendor": string,
         "description": string,
         "date": string (تنسيق ISO، استخدم تاريخ اليوم دائماً ما لم يحدد خلاف ذلك),
@@ -72,6 +74,7 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       - استخرج البائع من السياق (مثل "من حدث Cursor Tallinn" → "حدث Cursor Tallinn")
       - كن ذكياً في التصنيف (الجوائز/الأرباح = الدخل، مشتريات الطعام = الطعام والشراب، إلخ)
       - اكتب الوصف باللغة العربية دائماً (مثل "دفع فاتورة الكهرباء"، "شراء طعام"، "راتب الشهر")
+      - اكتشف العملة من النص (ريال = SAR، دولار = USD، يورو = EUR، إلخ)
     `,
     en: `
       Parse this natural language transaction description into structured data:
@@ -81,14 +84,16 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       Analyze the message carefully and extract:
       1. Amount (with correct sign: positive for income/earnings, negative for expenses)
-      2. Vendor/source (who you received money from or paid money to)
-      3. Description (what the transaction was for)
-      4. Date (ALWAYS use today's date unless user explicitly mentions a different date)
-      5. Category (choose the most appropriate one)
+      2. Currency (dollar, euro, pound, etc. - use "USD" for dollar, "EUR" for euro)
+      3. Vendor/source (who you received money from or paid money to)
+      4. Description (what the transaction was for)
+      5. Date (ALWAYS use today's date unless user explicitly mentions a different date)
+      6. Category (choose the most appropriate one)
       
       Return ONLY a JSON object with these fields (use null for missing data):
       {
         "amount": number (positive for income, negative for expenses),
+        "currency": string (currency code like "USD", "EUR", "GBP"),
         "vendor": string,
         "description": string,
         "date": string (ISO format, ALWAYS use today's date unless explicitly specified),
@@ -106,6 +111,7 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       - Extract vendor from context (e.g., "from Cursor Tallinn event" → "Cursor Tallinn event")
       - Be smart about categorization (prizes/winnings = Income, food purchases = Food & Drink, etc.)
       - Write the description in English (e.g., "electricity bill payment", "food purchase", "monthly salary")
+      - Detect currency from text (dollar = USD, euro = EUR, pound = GBP, etc.)
     `,
     es: `
       Analiza esta descripción de transacción en lenguaje natural y conviértela en datos estructurados:
@@ -115,14 +121,16 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       Analiza el mensaje cuidadosamente y extrae:
       1. Cantidad (con el signo correcto: positivo para ingresos/ganancias, negativo para gastos)
-      2. Vendedor/fuente (de quién recibiste dinero o a quién pagaste)
-      3. Descripción (para qué era la transacción)
-      4. Fecha (SIEMPRE usa la fecha de hoy a menos que el usuario mencione explícitamente una fecha diferente)
-      5. Categoría (elige la más apropiada)
+      2. Moneda (dólar, euro, libra, etc. - usa "USD" para dólar, "EUR" para euro)
+      3. Vendedor/fuente (de quién recibiste dinero o a quién pagaste)
+      4. Descripción (para qué era la transacción)
+      5. Fecha (SIEMPRE usa la fecha de hoy a menos que el usuario mencione explícitamente una fecha diferente)
+      6. Categoría (elige la más apropiada)
       
       Devuelve SOLO un objeto JSON con estos campos (usa null para datos faltantes):
       {
         "amount": number (positivo para ingresos, negativo para gastos),
+        "currency": string (código de moneda como "USD", "EUR", "GBP"),
         "vendor": string,
         "description": string,
         "date": string (formato ISO, SIEMPRE usa la fecha de hoy a menos que se especifique explícitamente),
@@ -131,6 +139,7 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       REGLAS IMPORTANTES:
       - Escribe la descripción en español (ej: "pago de factura de electricidad", "compra de comida", "salario mensual")
+      - Detecta la moneda del texto (dólar = USD, euro = EUR, libra = GBP, etc.)
     `,
     fr: `
       Analysez cette description de transaction en langage naturel et convertissez-la en données structurées:
@@ -140,14 +149,16 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       Analysez le message attentivement et extrayez:
       1. Montant (avec le bon signe: positif pour les revenus/gains, négatif pour les dépenses)
-      2. Vendeur/source (de qui vous avez reçu de l'argent ou à qui vous avez payé)
-      3. Description (à quoi servait la transaction)
-      4. Date (UTILISEZ TOUJOURS la date d'aujourd'hui sauf si l'utilisateur mentionne explicitement une date différente)
-      5. Catégorie (choisissez la plus appropriée)
+      2. Devise (dollar, euro, livre, etc. - utilisez "USD" pour dollar, "EUR" pour euro)
+      3. Vendeur/source (de qui vous avez reçu de l'argent ou à qui vous avez payé)
+      4. Description (à quoi servait la transaction)
+      5. Date (UTILISEZ TOUJOURS la date d'aujourd'hui sauf si l'utilisateur mentionne explicitement une date différente)
+      6. Catégorie (choisissez la plus appropriée)
       
       Retournez SEULEMENT un objet JSON avec ces champs (utilisez null pour les données manquantes):
       {
         "amount": number (positif pour les revenus, négatif pour les dépenses),
+        "currency": string (code de devise comme "USD", "EUR", "GBP"),
         "vendor": string,
         "description": string,
         "date": string (format ISO, UTILISEZ TOUJOURS la date d'aujourd'hui sauf spécification explicite),
@@ -156,6 +167,7 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       RÈGLES IMPORTANTES:
       - Écrivez la description en français (ex: "paiement de facture d'électricité", "achat de nourriture", "salaire mensuel")
+      - Détectez la devise du texte (dollar = USD, euro = EUR, livre = GBP, etc.)
     `,
     de: `
       Analysieren Sie diese natürliche Transaktionsbeschreibung und konvertieren Sie sie in strukturierte Daten:
@@ -165,14 +177,16 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       Analysieren Sie die Nachricht sorgfältig und extrahieren Sie:
       1. Betrag (mit korrektem Vorzeichen: positiv für Einkommen/Gewinne, negativ für Ausgaben)
-      2. Verkäufer/Quelle (von wem Sie Geld erhalten oder an wen Sie gezahlt haben)
-      3. Beschreibung (wofür die Transaktion war)
-      4. Datum (VERWENDEN SIE IMMER das heutige Datum, es sei denn, der Benutzer erwähnt explizit ein anderes Datum)
-      5. Kategorie (wählen Sie die am besten geeignete)
+      2. Währung (Dollar, Euro, Pfund, etc. - verwenden Sie "USD" für Dollar, "EUR" für Euro)
+      3. Verkäufer/Quelle (von wem Sie Geld erhalten oder an wen Sie gezahlt haben)
+      4. Beschreibung (wofür die Transaktion war)
+      5. Datum (VERWENDEN SIE IMMER das heutige Datum, es sei denn, der Benutzer erwähnt explizit ein anderes Datum)
+      6. Kategorie (wählen Sie die am besten geeignete)
       
       Geben Sie NUR ein JSON-Objekt mit diesen Feldern zurück (verwenden Sie null für fehlende Daten):
       {
         "amount": number (positiv für Einkommen, negativ für Ausgaben),
+        "currency": string (Währungscode wie "USD", "EUR", "GBP"),
         "vendor": string,
         "description": string,
         "date": string (ISO-Format, VERWENDEN SIE IMMER das heutige Datum, es sei denn explizit angegeben),
@@ -181,6 +195,7 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       WICHTIGE REGELN:
       - Schreiben Sie die Beschreibung auf Deutsch (z.B. "Stromrechnung bezahlt", "Lebensmittel gekauft", "Monatsgehalt")
+      - Erkennen Sie die Währung aus dem Text (Dollar = USD, Euro = EUR, Pfund = GBP, etc.)
     `,
     ru: `
       Проанализируйте это описание транзакции на естественном языке и преобразуйте его в структурированные данные:
@@ -190,14 +205,16 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       Внимательно проанализируйте сообщение и извлеките:
       1. Сумму (с правильным знаком: положительная для дохода/заработка, отрицательная для расходов)
-      2. Продавца/источник (от кого вы получили деньги или кому заплатили)
-      3. Описание (для чего была транзакция)
-      4. Дату (ВСЕГДА используйте сегодняшнюю дату, если пользователь не указал другую дату)
-      5. Категорию (выберите наиболее подходящую)
+      2. Валюту (доллар, евро, рубль, etc. - используйте "USD" для доллара, "EUR" для евро, "RUB" для рубля)
+      3. Продавца/источник (от кого вы получили деньги или кому заплатили)
+      4. Описание (для чего была транзакция)
+      5. Дату (ВСЕГДА используйте сегодняшнюю дату, если пользователь не указал другую дату)
+      6. Категорию (выберите наиболее подходящую)
       
       Верните ТОЛЬКО JSON объект с этими полями (используйте null для отсутствующих данных):
       {
         "amount": number (положительное для дохода, отрицательное для расходов),
+        "currency": string (код валюты как "USD", "EUR", "RUB"),
         "vendor": string,
         "description": string,
         "date": string (формат ISO, ВСЕГДА используйте сегодняшнюю дату, если не указано иное),
@@ -206,6 +223,7 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       ВАЖНЫЕ ПРАВИЛА:
       - Пишите описание на русском языке (например: "оплата счета за электричество", "покупка продуктов", "месячная зарплата")
+      - Определите валюту из текста (доллар = USD, евро = EUR, рубль = RUB, etc.)
     `,
     zh: `
       解析这个自然语言交易描述并转换为结构化数据：
@@ -215,14 +233,16 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       仔细分析消息并提取：
       1. 金额（带正确符号：收入/收益为正，支出为负）
-      2. 供应商/来源（您从谁那里收到钱或向谁付款）
-      3. 描述（交易的目的）
-      4. 日期（除非用户明确提到不同日期，否则始终使用今天的日期）
-      5. 类别（选择最合适的）
+      2. 货币（美元，欧元，人民币，etc. - 使用 "USD" 表示美元，"EUR" 表示欧元，"CNY" 表示人民币）
+      3. 供应商/来源（您从谁那里收到钱或向谁付款）
+      4. 描述（交易的目的）
+      5. 日期（除非用户明确提到不同日期，否则始终使用今天的日期）
+      6. 类别（选择最合适的）
       
       仅返回包含这些字段的JSON对象（对缺失数据使用null）：
       {
         "amount": number (收入为正，支出为负),
+        "currency": string (货币代码如 "USD", "EUR", "CNY"),
         "vendor": string,
         "description": string,
         "date": string (ISO格式，除非明确指定，否则始终使用今天的日期),
@@ -231,6 +251,7 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       重要规则：
       - 用中文写描述（例如："电费账单支付"，"食品购买"，"月薪"）
+      - 从文本中检测货币（美元 = USD，欧元 = EUR，人民币 = CNY，etc.）
     `,
     ja: `
       この自然言語の取引説明を構造化データに解析します：
@@ -240,14 +261,16 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       メッセージを注意深く分析し、以下を抽出してください：
       1. 金額（正しい符号付き：収入/収益は正、支出は負）
-      2. ベンダー/ソース（お金を受け取った相手または支払った相手）
-      3. 説明（取引の目的）
-      4. 日付（ユーザーが明示的に異なる日付を言及しない限り、常に今日の日付を使用）
-      5. カテゴリ（最も適切なものを選択）
+      2. 通貨（ドル、ユーロ、円、etc. - "USD" でドル、"EUR" でユーロ、"JPY" で円を表す）
+      3. ベンダー/ソース（お金を受け取った相手または支払った相手）
+      4. 説明（取引の目的）
+      5. 日付（ユーザーが明示的に異なる日付を言及しない限り、常に今日の日付を使用）
+      6. カテゴリ（最も適切なものを選択）
       
       これらのフィールドを持つJSONオブジェクトのみを返してください（欠損データにはnullを使用）：
       {
         "amount": number (収入は正、支出は負),
+        "currency": string (通貨コードとして "USD", "EUR", "JPY"),
         "vendor": string,
         "description": string,
         "date": string (ISO形式、明示的に指定されない限り常に今日の日付を使用),
@@ -256,6 +279,7 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       重要なルール：
       - 説明を日本語で書いてください（例：「電気代の支払い」、「食料品の購入」、「月給」）
+      - テキストから通貨を検出してください（ドル = USD、ユーロ = EUR、円 = JPY、etc.）
     `,
     ko: `
       이 자연어 거래 설명을 구조화된 데이터로 파싱합니다:
@@ -265,14 +289,16 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       메시지를 주의 깊게 분석하고 다음을 추출하세요:
       1. 금액 (올바른 부호 포함: 수입/수익은 양수, 지출은 음수)
-      2. 공급업체/소스 (돈을 받은 사람 또는 지불한 사람)
-      3. 설명 (거래의 목적)
-      4. 날짜 (사용자가 명시적으로 다른 날짜를 언급하지 않는 한 항상 오늘 날짜 사용)
-      5. 카테고리 (가장 적절한 것 선택)
+      2. 통화 (달러, 유로, 원, etc. - "USD"로 달러, "EUR"로 유로, "KRW"로 원을 나타냄)
+      3. 공급업체/소스 (돈을 받은 사람 또는 지불한 사람)
+      4. 설명 (거래의 목적)
+      5. 날짜 (사용자가 명시적으로 다른 날짜를 언급하지 않는 한 항상 오늘 날짜 사용)
+      6. 카테고리 (가장 적절한 것 선택)
       
       이러한 필드가 있는 JSON 객체만 반환하세요 (누락된 데이터에는 null 사용):
       {
         "amount": number (수입은 양수, 지출은 음수),
+        "currency": string (통화 코드로 "USD", "EUR", "KRW"),
         "vendor": string,
         "description": string,
         "date": string (ISO 형식, 명시적으로 지정되지 않는 한 항상 오늘 날짜 사용),
@@ -281,6 +307,7 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       중요한 규칙:
       - 설명을 한국어로 작성하세요 (예: "전기 요금 지불", "식료품 구매", "월급")
+      - 텍스트에서 통화를 감지하세요 (달러 = USD, 유로 = EUR, 원 = KRW, etc.)
     `,
     hi: `
       इस प्राकृतिक भाषा लेन-देन विवरण को संरचित डेटा में पार्स करें:
@@ -290,14 +317,16 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       संदेश का सावधानीपूर्वक विश्लेषण करें और निम्नलिखित निकालें:
       1. राशि (सही संकेत के साथ: आय/कमाई के लिए सकारात्मक, खर्च के लिए नकारात्मक)
-      2. विक्रेता/स्रोत (जिससे आपको पैसा मिला या जिसे आपने भुगतान किया)
-      3. विवरण (लेन-देन किस लिए था)
-      4. तारीख (हमेशा आज की तारीख का उपयोग करें जब तक कि उपयोगकर्ता स्पष्ट रूप से अलग तारीख न बताए)
-      5. श्रेणी (सबसे उपयुक्त चुनें)
+      2. मुद्रा (डॉलर, यूरो, रुपया, etc. - "USD" डॉलर के लिए, "EUR" यूरो के लिए, "INR" रुपया के लिए)
+      3. विक्रेता/स्रोत (जिससे आपको पैसा मिला या जिसे आपने भुगतान किया)
+      4. विवरण (लेन-देन किस लिए था)
+      5. तारीख (हमेशा आज की तारीख का उपयोग करें जब तक कि उपयोगकर्ता स्पष्ट रूप से अलग तारीख न बताए)
+      6. श्रेणी (सबसे उपयुक्त चुनें)
       
       केवल इन फ़ील्ड्स के साथ JSON ऑब्जेक्ट लौटाएं (गायब डेटा के लिए null का उपयोग करें):
       {
         "amount": number (आय के लिए सकारात्मक, खर्च के लिए नकारात्मक),
+        "currency": string (मुद्रा कोड जैसे "USD", "EUR", "INR"),
         "vendor": string,
         "description": string,
         "date": string (ISO प्रारूप, स्पष्ट रूप से निर्दिष्ट न होने तक हमेशा आज की तारीख का उपयोग करें),
@@ -306,6 +335,7 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       महत्वपूर्ण नियम:
       - विवरण हिंदी में लिखें (उदाहरण: "बिजली बिल भुगतान", "खाद्य खरीदारी", "मासिक वेतन")
+      - टेक्स्ट से मुद्रा का पता लगाएं (डॉलर = USD, यूरो = EUR, रुपया = INR, etc.)
     `,
     tr: `
       Bu doğal dil işlem açıklamasını yapılandırılmış verilere ayrıştırın:
@@ -315,14 +345,16 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       Mesajı dikkatlice analiz edin ve şunları çıkarın:
       1. Miktar (doğru işaretle: gelir/kazanç için pozitif, gider için negatif)
-      2. Satıcı/kaynak (kimden para aldığınız veya kime ödeme yaptığınız)
-      3. Açıklama (işlemin ne için olduğu)
-      4. Tarih (kullanıcı açıkça farklı bir tarih belirtmediği sürece her zaman bugünün tarihini kullanın)
-      5. Kategori (en uygun olanı seçin)
+      2. Para birimi (dolar, euro, lira, etc. - "USD" dolar için, "EUR" euro için, "TRY" lira için)
+      3. Satıcı/kaynak (kimden para aldığınız veya kime ödeme yaptığınız)
+      4. Açıklama (işlemin ne için olduğu)
+      5. Tarih (kullanıcı açıkça farklı bir tarih belirtmediği sürece her zaman bugünün tarihini kullanın)
+      6. Kategori (en uygun olanı seçin)
       
       Sadece bu alanlarla JSON nesnesi döndürün (eksik veriler için null kullanın):
       {
         "amount": number (gelir için pozitif, gider için negatif),
+        "currency": string (para birimi kodu gibi "USD", "EUR", "TRY"),
         "vendor": string,
         "description": string,
         "date": string (ISO formatı, açıkça belirtilmediği sürece her zaman bugünün tarihini kullanın),
@@ -331,6 +363,7 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
       
       ÖNEMLİ KURALLAR:
       - Açıklamayı Türkçe yazın (örnek: "elektrik faturası ödemesi", "gıda alışverişi", "aylık maaş")
+      - Metinden para birimini tespit edin (dolar = USD, euro = EUR, lira = TRY, etc.)
     `
   };
 

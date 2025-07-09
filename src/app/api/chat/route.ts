@@ -5,6 +5,8 @@ import { detectLanguage, formatCurrencyByLanguage } from '@/lib/utils/language-d
 import { TransactionCategory } from '@/lib/types/transaction';
 import { parseTransactionText } from '@/lib/api/gemini';
 import logger from '@/lib/utils/logger';
+import { userSettingsDb } from '@/lib/db/schema';
+import { convertAmount } from '@/lib/utils/currency';
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
@@ -433,6 +435,44 @@ Vastausesimerkkejä:
 - "آپ کا بیلنس مثبت ہے! یہ بہت اچھا ہے۔ کیا آپ اپنے بجٹ کی منصوبہ بندی میں مدد چاہتے ہیں؟"`
 };
 
+// Helper function to format currency based on currency code
+function formatCurrencyByCode(amount: number, currencyCode: string): string {
+  const currencyFormats: Record<string, { locale: string; currency: string }> = {
+    USD: { locale: 'en-US', currency: 'USD' },
+    EUR: { locale: 'de-DE', currency: 'EUR' },
+    SAR: { locale: 'ar-SA', currency: 'SAR' },
+    GBP: { locale: 'en-GB', currency: 'GBP' },
+    JPY: { locale: 'ja-JP', currency: 'JPY' },
+    CNY: { locale: 'zh-CN', currency: 'CNY' },
+    KRW: { locale: 'ko-KR', currency: 'KRW' },
+    INR: { locale: 'hi-IN', currency: 'INR' },
+    RUB: { locale: 'ru-RU', currency: 'RUB' },
+    TRY: { locale: 'tr-TR', currency: 'TRY' },
+    PLN: { locale: 'pl-PL', currency: 'PLN' },
+    SEK: { locale: 'sv-SE', currency: 'SEK' },
+    DKK: { locale: 'da-DK', currency: 'DKK' },
+    NOK: { locale: 'no-NO', currency: 'NOK' },
+    ILS: { locale: 'he-IL', currency: 'ILS' },
+    IRR: { locale: 'fa-IR', currency: 'IRR' },
+    PKR: { locale: 'ur-PK', currency: 'PKR' }
+  };
+
+  const format = currencyFormats[currencyCode] || currencyFormats.USD;
+  
+  try {
+    return new Intl.NumberFormat(format.locale, {
+      style: 'currency',
+      currency: format.currency
+    }).format(amount);
+  } catch (error) {
+    // Fallback to USD
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { message, language } = await request.json();
@@ -496,9 +536,10 @@ export async function POST(request: NextRequest) {
           transactionInfo = {
             description: parsedTransaction.description,
             amount: parsedTransaction.amount,
+            currency: parsedTransaction.currency,
             category: parsedTransaction.category || 'Other',
             type: parsedTransaction.type || (parsedTransaction.amount > 0 ? 'income' : 'expense')
-          } as { description: string; amount: number; category: TransactionCategory; type: 'income' | 'expense' };
+          } as { description: string; amount: number; currency?: string; category: TransactionCategory; type: 'income' | 'expense' };
         }
       } catch (parseError) {
         logger.warn({ error: parseError instanceof Error ? parseError.message : parseError }, 'AI transaction parsing failed, falling back to keyword detection');
@@ -507,17 +548,72 @@ export async function POST(request: NextRequest) {
         if (fallbackInfo) {
           transactionInfo = {
             ...fallbackInfo,
+            currency: undefined, // Fallback doesn't detect currency
             type: (fallbackInfo.amount > 0 ? 'income' : 'expense') as 'income' | 'expense'
           };
         }
       }
 
       if (transactionInfo) {
+        // Fallback: detect Arabic currencies in the original message if currency is missing
+        if (!transactionInfo.currency) {
+          const currencyMap: { [key: string]: string } = {
+            'ريال|ريالات|ر\\.س': 'SAR',
+            'درهم|درهما|د\\.إ': 'AED',
+            'دينار كويتي|د\\.ك': 'KWD',
+            'دينار بحريني|د\\.ب': 'BHD',
+            'دينار أردني|د\\.أ': 'JOD',
+            'جنيه|جنيهات|ج\\.م': 'EGP',
+            'ليرة|ليرات|ل\\.ل': 'LBP',
+            'دولار|دولار أمريكي': 'USD',
+            'يورو': 'EUR',
+            'درهم مغربي|د\\.م': 'MAD',
+            'دينار جزائري|د\\.ج': 'DZD',
+            'دينار تونسي|د\\.ت': 'TND',
+            'ريال قطري|ر\\.ق': 'QAR'
+          };
+          for (const [pattern, code] of Object.entries(currencyMap)) {
+            if (new RegExp(pattern, 'i').test(message)) {
+              transactionInfo.currency = code;
+              break;
+            }
+          }
+        }
         // Add the transaction to the database
         try {
+          // Get user's default currency
+          const userSettings = userSettingsDb.get() || { defaultCurrency: 'USD' };
+          const defaultCurrency = userSettings.defaultCurrency || 'USD';
+          
+          // Extract currency from parsed transaction or use default
+          const transactionCurrency = transactionInfo.currency || defaultCurrency;
+          let finalAmount = transactionInfo.amount;
+          let finalCurrency = transactionCurrency;
+          
+          // Convert to default currency if different
+          if (transactionCurrency !== defaultCurrency) {
+            try {
+              finalAmount = await convertAmount(transactionInfo.amount, transactionCurrency, defaultCurrency);
+              finalCurrency = defaultCurrency;
+            } catch (conversionError) {
+              logger.warn({ 
+                error: conversionError instanceof Error ? conversionError.message : conversionError,
+                fromCurrency: transactionCurrency,
+                toCurrency: defaultCurrency 
+              }, 'Currency conversion failed, using original amount');
+              // Keep original amount if conversion fails
+            }
+          }
+          
+          // Create transaction with new multi-currency fields
           const newTransaction = {
             description: transactionInfo.description,
-            amount: transactionInfo.amount,
+            originalAmount: transactionInfo.amount,
+            originalCurrency: transactionCurrency,
+            convertedAmount: finalAmount,
+            convertedCurrency: finalCurrency,
+            conversionRate: transactionCurrency !== defaultCurrency ? finalAmount / transactionInfo.amount : 1,
+            conversionFee: 0, // No fee for now
             category: transactionInfo.category as TransactionCategory,
             date: new Date(),
             type: transactionInfo.type || (transactionInfo.amount > 0 ? 'income' : 'expense') as 'income' | 'expense',
@@ -529,31 +625,31 @@ export async function POST(request: NextRequest) {
           
           // Get updated financial data
           const updatedTransactions = transactionDb.getAll();
-          const updatedBalance = updatedTransactions.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
-          const updatedFormattedBalance = formatCurrencyByLanguage(updatedBalance, detectedLanguage.code);
+          const updatedBalance = updatedTransactions.reduce((sum: number, t: any) => sum + (t.convertedAmount || t.amount || 0), 0);
+          const updatedFormattedBalance = formatCurrencyByCode(updatedBalance, defaultCurrency);
           
           // Create success message in the detected language
           const successMessages: Record<string, string> = {
-            ar: `تم إضافة المعاملة بنجاح! ${transactionInfo.description} بقيمة ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'ar')}. رصيدك الجديد هو ${updatedFormattedBalance}.`,
-            en: `Transaction added successfully! ${transactionInfo.description} for ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'en')}. Your new balance is ${updatedFormattedBalance}.`,
-            es: `¡Transacción agregada exitosamente! ${transactionInfo.description} por ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'es')}. Tu nuevo saldo es ${updatedFormattedBalance}.`,
-            fr: `Transaction ajoutée avec succès ! ${transactionInfo.description} pour ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'fr')}. Votre nouveau solde est ${updatedFormattedBalance}.`,
-            de: `Transaktion erfolgreich hinzugefügt! ${transactionInfo.description} für ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'de')}. Ihr neuer Kontostand ist ${updatedFormattedBalance}.`,
-            ru: `Транзакция успешно добавлена! ${transactionInfo.description} на ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'ru')}. Ваш новый баланс ${updatedFormattedBalance}.`,
-            zh: `交易添加成功！${transactionInfo.description} ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'zh')}。您的新余额是${updatedFormattedBalance}。`,
-            ja: `取引が正常に追加されました！${transactionInfo.description} ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'ja')}。新しい残高は${updatedFormattedBalance}です。`,
-            ko: `거래가 성공적으로 추가되었습니다! ${transactionInfo.description} ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'ko')}. 새로운 잔액은 ${updatedFormattedBalance}입니다.`,
-            hi: `लेन-देन सफलतापूर्वक जोड़ा गया! ${transactionInfo.description} ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'hi')} के लिए। आपका नया शेष ${updatedFormattedBalance} है।`,
-            tr: `İşlem başarıyla eklendi! ${transactionInfo.description} ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'tr')} için. Yeni bakiyeniz ${updatedFormattedBalance}.`,
-            nl: `Transactie succesvol toegevoegd! ${transactionInfo.description} voor ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'nl')}. Je nieuwe saldo is ${updatedFormattedBalance}.`,
-            pl: `Transakcja została pomyślnie dodana! ${transactionInfo.description} za ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'pl')}. Twoje nowe saldo to ${updatedFormattedBalance}.`,
-            sv: `Transaktion tillagd framgångsrikt! ${transactionInfo.description} för ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'sv')}. Ditt nya saldo är ${updatedFormattedBalance}.`,
-            da: `Transaktion tilføjet succesfuldt! ${transactionInfo.description} for ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'da')}. Din nye saldo er ${updatedFormattedBalance}.`,
-            no: `Transaksjon lagt til! ${transactionInfo.description} for ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'no')}. Din nye saldo er ${updatedFormattedBalance}.`,
-            fi: `Tapahtuma lisätty onnistuneesti! ${transactionInfo.description} ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'fi')} kohden. Uusi saldosi on ${updatedFormattedBalance}.`,
-            he: `העסקה נוספה בהצלחה! ${transactionInfo.description} עבור ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'he')}. היתרה החדשה שלך היא ${updatedFormattedBalance}.`,
-            fa: `تراکنش با موفقیت اضافه شد! ${transactionInfo.description} برای ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'fa')}. موجودی جدید شما ${updatedFormattedBalance} است.`,
-            ur: `لین دین کامیابی سے شامل کر دیا گیا! ${transactionInfo.description} ${formatCurrencyByLanguage(Math.abs(transactionInfo.amount), 'ur')} کے لیے۔ آپ کا نیا بیلنس ${updatedFormattedBalance} ہے۔`
+            ar: `تم إضافة المعاملة بنجاح! ${transactionInfo.description} بقيمة ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. رصيدك الجديد هو ${updatedFormattedBalance}.`,
+            en: `Transaction added successfully! ${transactionInfo.description} for ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. Your new balance is ${updatedFormattedBalance}.`,
+            es: `¡Transacción agregada exitosamente! ${transactionInfo.description} por ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. Tu nuevo saldo es ${updatedFormattedBalance}.`,
+            fr: `Transaction ajoutée avec succès ! ${transactionInfo.description} pour ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. Votre nouveau solde est ${updatedFormattedBalance}.`,
+            de: `Transaktion erfolgreich hinzugefügt! ${transactionInfo.description} für ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. Ihr neuer Kontostand ist ${updatedFormattedBalance}.`,
+            ru: `Транзакция успешно добавлена! ${transactionInfo.description} на ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. Ваш новый баланс ${updatedFormattedBalance}.`,
+            zh: `交易添加成功！${transactionInfo.description} ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}。您的新余额是${updatedFormattedBalance}。`,
+            ja: `取引が正常に追加されました！${transactionInfo.description} ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}。新しい残高は${updatedFormattedBalance}です。`,
+            ko: `거래가 성공적으로 추가되었습니다! ${transactionInfo.description} ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. 새로운 잔액은 ${updatedFormattedBalance}입니다.`,
+            hi: `लेन-देन सफलतापूर्वक जोड़ा गया! ${transactionInfo.description} ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)} के लिए। आपका नया शेष ${updatedFormattedBalance} है।`,
+            tr: `İşlem başarıyla eklendi! ${transactionInfo.description} ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)} için. Yeni bakiyeniz ${updatedFormattedBalance}.`,
+            nl: `Transactie succesvol toegevoegd! ${transactionInfo.description} voor ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. Je nieuwe saldo is ${updatedFormattedBalance}.`,
+            pl: `Transakcja została pomyślnie dodana! ${transactionInfo.description} za ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. Twoje nowe saldo to ${updatedFormattedBalance}.`,
+            sv: `Transaktion tillagd framgångsrikt! ${transactionInfo.description} för ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. Ditt nya saldo är ${updatedFormattedBalance}.`,
+            da: `Transaktion tilføjet succesfuldt! ${transactionInfo.description} for ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. Din nye saldo er ${updatedFormattedBalance}.`,
+            no: `Transaksjon lagt til! ${transactionInfo.description} for ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. Din nye saldo er ${updatedFormattedBalance}.`,
+            fi: `Tapahtuma lisätty onnistuneesti! ${transactionInfo.description} ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)} kohden. Uusi saldosi on ${updatedFormattedBalance}.`,
+            he: `העסקה נוספה בהצלחה! ${transactionInfo.description} עבור ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. היתרה החדשה שלך היא ${updatedFormattedBalance}.`,
+            fa: `تراکنش با موفقیت اضافه شد! ${transactionInfo.description} برای ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)}. موجودی جدید شما ${updatedFormattedBalance} است.`,
+            ur: `لین دین کامیابی سے شامل کر دیا گیا! ${transactionInfo.description} ${formatCurrencyByCode(Math.abs(finalAmount), finalCurrency)} کے لیے۔ آپ کا نیا بیلنس ${updatedFormattedBalance} ہے۔`
           };
           
           responseText = successMessages[detectedLanguage.code] || successMessages.en;

@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const transaction = transactionDb.create(transactionInput);
+    const transaction = await transactionDb.create(transactionInput);
     
     if (!transaction) {
       logger.error({ requestId }, 'Failed to create transaction - database returned null');
