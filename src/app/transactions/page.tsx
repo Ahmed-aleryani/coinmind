@@ -55,8 +55,9 @@ export default function Transactions() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-
-  // Form state
+  const [defaultCurrency, setDefaultCurrency] = useState('USD');
+  const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
+  const [isCurrencyLoading, setIsCurrencyLoading] = useState(false);
   const [formData, setFormData] = useState({
     amount: '',
     currency: 'USD',
@@ -67,9 +68,40 @@ export default function Transactions() {
     date: new Date().toISOString().split('T')[0]
   });
 
+  // Fetch supported currencies and user default currency
+  useEffect(() => {
+    const fetchCurrencies = async () => {
+      try {
+        setIsCurrencyLoading(true);
+        const res = await fetch('/api/user-currency');
+        const data = await res.json();
+        setDefaultCurrency(data.defaultCurrency || 'USD');
+        const curRes = await fetch('/api/currencies');
+        const curData = await curRes.json();
+        setSupportedCurrencies(curData.currencies || ['USD']);
+      } catch (e) {
+        setSupportedCurrencies(['USD']);
+      } finally {
+        setIsCurrencyLoading(false);
+      }
+    };
+    fetchCurrencies();
+  }, []);
+
+  const handleCurrencyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newCurrency = e.target.value;
+    setDefaultCurrency(newCurrency);
+    await fetch('/api/user-currency', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultCurrency: newCurrency })
+    });
+    window.location.reload();
+  };
+
   const fetchTransactions = async () => {
     try {
-      const response = await fetch('/api/transactions');
+      const response = await fetch(`/api/transactions?currency=${defaultCurrency}`);
       const data = await response.json();
       
       if (data.success) {
@@ -89,7 +121,7 @@ export default function Transactions() {
 
   useEffect(() => {
     fetchTransactions();
-  }, []);
+  }, [defaultCurrency]);
 
   // Filter transactions based on search and filters
   useEffect(() => {
@@ -255,7 +287,7 @@ export default function Transactions() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {formatCurrency(totalIncome)}
+              {formatCurrency(totalIncome, { currency: defaultCurrency })}
             </div>
           </CardContent>
         </Card>
@@ -266,7 +298,7 @@ export default function Transactions() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {formatCurrency(totalExpenses)}
+              {formatCurrency(totalExpenses, { currency: defaultCurrency })}
             </div>
           </CardContent>
         </Card>
@@ -360,7 +392,7 @@ export default function Transactions() {
                     <div className="flex flex-col items-end">
                       <span className={`font-bold ${transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
                         {transaction.type === 'income' ? '+' : '-'}
-                        {formatCurrency(Math.abs(transaction.convertedAmount || transaction.amount))}
+                        {formatCurrency(Math.abs(transaction.convertedAmount || transaction.amount), { currency: defaultCurrency })}
                       </span>
                       {transaction.convertedCurrency && (
                         <span className="text-xs text-muted-foreground">
