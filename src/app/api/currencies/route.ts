@@ -13,7 +13,7 @@ export async function GET() {
     return NextResponse.json({ 
       success: false,
       error: 'Failed to fetch currencies',
-      currencies: ['USD', 'EUR', 'GBP', 'JPY', 'SAR', 'CNY', 'KRW', 'INR', 'RUB', 'TRY'] // Fallback currencies
+      currencies: ['USD', 'EUR', 'GBP', 'JPY', 'SAR', 'EGP', 'CNY', 'KRW', 'INR', 'RUB', 'TRY'] // Fallback currencies
     }, { status: 500 });
   }
 } 

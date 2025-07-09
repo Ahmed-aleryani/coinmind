@@ -558,19 +558,19 @@ export async function POST(request: NextRequest) {
         // Fallback: detect Arabic currencies in the original message if currency is missing
         if (!transactionInfo.currency) {
           const currencyMap: { [key: string]: string } = {
-            'ريال|ريالات|ر\\.س': 'SAR',
-            'درهم|درهما|د\\.إ': 'AED',
-            'دينار كويتي|د\\.ك': 'KWD',
-            'دينار بحريني|د\\.ب': 'BHD',
-            'دينار أردني|د\\.أ': 'JOD',
-            'جنيه|جنيهات|ج\\.م': 'EGP',
-            'ليرة|ليرات|ل\\.ل': 'LBP',
+            'ريال|ريالات|ر\.س': 'SAR',
+            'درهم|درهما|د\.إ': 'AED',
+            'دينار كويتي|د\.ك': 'KWD',
+            'دينار بحريني|د\.ب': 'BHD',
+            'دينار أردني|د\.أ': 'JOD',
+            'جنيه|جنيهات|ج\.م': 'EGP',
+            'ليرة|ليرات|ل\.ل': 'LBP',
             'دولار|دولار أمريكي': 'USD',
             'يورو': 'EUR',
-            'درهم مغربي|د\\.م': 'MAD',
-            'دينار جزائري|د\\.ج': 'DZD',
-            'دينار تونسي|د\\.ت': 'TND',
-            'ريال قطري|ر\\.ق': 'QAR'
+            'درهم مغربي|د\.م': 'MAD',
+            'دينار جزائري|د\.ج': 'DZD',
+            'دينار تونسي|د\.ت': 'TND',
+            'ريال قطري|ر\.ق': 'QAR'
           };
           for (const [pattern, code] of Object.entries(currencyMap)) {
             if (new RegExp(pattern, 'i').test(message)) {
@@ -579,21 +579,30 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+        // USD fallback: if message contains $ or USD, force currency to USD
+        if ((/\$|\bUSD\b/i.test(message)) && transactionInfo.currency !== 'USD') {
+          transactionInfo.currency = 'USD';
+        }
         // Add the transaction to the database
         try {
           // Get user's default currency
           const userSettings = userSettingsDb.get() || { defaultCurrency: 'USD' };
           const defaultCurrency = userSettings.defaultCurrency || 'USD';
-          
+
           // Extract currency from parsed transaction or use default
           const transactionCurrency = transactionInfo.currency || defaultCurrency;
           let finalAmount = transactionInfo.amount;
           let finalCurrency = transactionCurrency;
-          
-          // Convert to default currency if different
+          let conversionRate = 1;
+
+          // Convert to user's default currency if different
           if (transactionCurrency !== defaultCurrency) {
             try {
-              finalAmount = await convertAmount(transactionInfo.amount, transactionCurrency, defaultCurrency);
+              console.log(`[CONVERT] amount: ${transactionInfo.amount}, from: ${transactionCurrency}, to: ${defaultCurrency}`);
+              const converted = await convertAmount(transactionInfo.amount, transactionCurrency, defaultCurrency);
+              console.log(`[CONVERT] result: ${converted}`);
+              conversionRate = converted / transactionInfo.amount;
+              finalAmount = converted;
               finalCurrency = defaultCurrency;
             } catch (conversionError) {
               logger.warn({ 
@@ -602,9 +611,12 @@ export async function POST(request: NextRequest) {
                 toCurrency: defaultCurrency 
               }, 'Currency conversion failed, using original amount');
               // Keep original amount if conversion fails
+              finalAmount = transactionInfo.amount;
+              finalCurrency = transactionCurrency;
+              conversionRate = 1;
             }
           }
-          
+
           // Create transaction with new multi-currency fields
           const newTransaction = {
             description: transactionInfo.description,
@@ -612,7 +624,7 @@ export async function POST(request: NextRequest) {
             originalCurrency: transactionCurrency,
             convertedAmount: finalAmount,
             convertedCurrency: finalCurrency,
-            conversionRate: transactionCurrency !== defaultCurrency ? finalAmount / transactionInfo.amount : 1,
+            conversionRate: conversionRate,
             conversionFee: 0, // No fee for now
             category: transactionInfo.category as TransactionCategory,
             date: new Date(),
