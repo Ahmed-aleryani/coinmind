@@ -24,18 +24,75 @@ interface ChatInterfaceProps {
   className?: string;
 }
 
+// Simple language detection function
+function detectLanguage(text: string): string {
+  // Check for Arabic characters
+  const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+  if (arabicRegex.test(text)) {
+    return 'ar';
+  }
+  
+  // Check for other common languages
+  const chineseRegex = /[\u4E00-\u9FFF]/;
+  if (chineseRegex.test(text)) {
+    return 'zh';
+  }
+  
+  const japaneseRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/;
+  if (japaneseRegex.test(text)) {
+    return 'ja';
+  }
+  
+  const koreanRegex = /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/;
+  if (koreanRegex.test(text)) {
+    return 'ko';
+  }
+  
+  const hindiRegex = /[\u0900-\u097F]/;
+  if (hindiRegex.test(text)) {
+    return 'hi';
+  }
+  
+  // Default to English
+  return 'en';
+}
+
+// Get placeholder text based on detected language
+function getPlaceholderText(input: string): string {
+  const language = detectLanguage(input);
+  
+  const placeholders: Record<string, string> = {
+    ar: "اكتب رسالتك... (مثال: دفعت 200 ريال على الطعام)",
+    zh: "输入您的消息... (例如: 我花了100元买食物)",
+    ja: "メッセージを入力... (例: 食料品に1000円使いました)",
+    ko: "메시지를 입력하세요... (예: 식료품에 10000원 썼습니다)",
+    hi: "अपना संदेश लिखें... (उदाहरण: मैंने खाने पर 100 रुपये खर्च किए)",
+    tr: "Mesajınızı yazın... (örnek: yemek için 100 lira harcadım)",
+    es: "Escribe tu mensaje... (ejemplo: gasté 25 euros en comida)",
+    fr: "Écrivez votre message... (exemple: j'ai dépensé 30 euros pour la nourriture)",
+    de: "Schreiben Sie Ihre Nachricht... (Beispiel: ich habe 40 Euro für Lebensmittel ausgegeben)",
+    ru: "Напишите ваше сообщение... (пример: я потратил 3000 рублей на еду)",
+    en: "Type your message... (e.g., 'I spent $50 on groceries')"
+  };
+  
+  return placeholders[language] || placeholders.en;
+}
+
 export function ChatInterface({ className }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: 'Hi! I\'m your personal finance assistant. I can help you track expenses, analyze spending, and answer questions about your finances. Try saying something like "I bought coffee for $5" or "How much did I spend this month?"',
+      content: 'Hi! I\'m your personal finance assistant. I can help you track expenses, analyze spending, and answer questions about your finances in any language. Try one of the examples below or speak naturally in your preferred language!',
       sender: 'assistant',
       timestamp: new Date(),
       type: 'help',
       suggestions: [
-        "I bought coffee for $5",
+        "I spent $50 on groceries",
+        "دفعت 200 ريال على الطعام",
+        "Gasté 25 euros en gasolina",
         "How much did I spend this month?",
-        "Show me my food expenses"
+        "كم أنفقت هذا الشهر؟",
+        "¿Cuánto gasté este mes?"
       ]
     }
   ]);
@@ -152,15 +209,27 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     setIsLoading(true);
 
     try {
+      // Detect language for the message
+      const detectedLanguage = detectLanguage(content.trim());
+      console.log('Detected language:', detectedLanguage);
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: content.trim() }),
+        body: JSON.stringify({ 
+          message: content.trim(),
+          language: detectedLanguage
+        }),
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const data = await response.json();
+      console.log('Chat API response:', data);
 
       if (data.success) {
         const assistantMessage: Message = {
@@ -174,18 +243,31 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
         setMessages(prev => [...prev, assistantMessage]);
       } else {
-        throw new Error(data.error || 'Unknown error');
+        throw new Error(data.error || 'Unknown error from server');
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorMessage: Message = {
+      
+      let errorMessage = 'Sorry, I encountered an error. Please try again.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (error.message.includes('API key')) {
+          errorMessage = 'Configuration error. Please make sure your Gemini API key is configured correctly.';
+        } else {
+          errorMessage = `Error: ${error.message}`;
+        }
+      }
+      
+      const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
-        content: 'Sorry, I encountered an error. Please make sure your Gemini API key is configured correctly in your environment variables.',
+        content: errorMessage,
         sender: 'assistant',
         timestamp: new Date(),
         type: 'error'
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
     }
@@ -507,7 +589,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
                 placeholder={
                   isListening 
                     ? "🎤 Listening... speak now" 
-                    : "Type your message... (e.g., 'I bought lunch for $12')"
+                    : getPlaceholderText(input)
                 }
                 className={cn(
                   "w-full resize-none border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 rounded-md",

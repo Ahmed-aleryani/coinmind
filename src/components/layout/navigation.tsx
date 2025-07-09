@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Plus, BarChart3, List } from "lucide-react";
+import { Plus, BarChart3, List, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
@@ -17,6 +17,12 @@ const navigation = [
     href: "/transactions", 
     icon: List,
     emoji: "📋"
+  },
+  {
+    name: "Chat",
+    href: "/chat", 
+    icon: MessageCircle,
+    emoji: "💬"
   }
 ];
 
@@ -26,7 +32,7 @@ export function Navigation() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t supports-[backdrop-filter]:bg-background/60 md:hidden">
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-2 h-16">
+        <div className="grid grid-cols-3 h-16">
           {navigation.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;

@@ -2,6 +2,7 @@ export interface Transaction {
   id: string;
   date: Date;
   amount: number;
+  currency: string;
   vendor: string;
   description: string;
   category: TransactionCategory;
@@ -9,6 +10,13 @@ export interface Transaction {
   receiptUrl?: string;
   createdAt: Date;
   updatedAt: Date;
+  // Multi-currency fields
+  originalAmount?: number;
+  originalCurrency?: string;
+  convertedAmount?: number;
+  convertedCurrency?: string;
+  conversionRate?: number;
+  conversionFee?: number;
 }
 
 export type TransactionCategory = 
@@ -27,7 +35,16 @@ export type TransactionType = 'income' | 'expense';
 
 export interface TransactionInput {
   date?: Date;
-  amount: number;
+  // Legacy fields for backward compatibility
+  amount?: number;
+  currency?: string;
+  // New multi-currency fields (optional for backward compatibility)
+  originalAmount?: number;
+  originalCurrency?: string;
+  convertedAmount?: number;
+  convertedCurrency?: string;
+  conversionRate?: number;
+  conversionFee?: number;
   vendor?: string;
   description: string;
   category?: TransactionCategory;
@@ -37,16 +54,33 @@ export interface TransactionInput {
 
 export interface ParsedTransactionText {
   amount?: number;
+  currency?: string;
   vendor?: string;
   description?: string;
   date?: Date;
   category?: TransactionCategory;
+  type?: TransactionType;
+}
+
+export interface UserSettings {
+  id: string;
+  defaultCurrency: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CurrencyConversion {
+  fromCurrency: string;
+  toCurrency: string;
+  rate: number;
+  timestamp: Date;
 }
 
 export interface ReceiptData {
   date?: Date;
   vendor?: string;
   total?: number;
+  currency?: string;
   items?: Array<{
     name: string;
     price: number;
@@ -58,7 +92,8 @@ export interface CSVTransaction {
   date: string;
   description: string;
   amount: string;
-  [key: string]: string; // For additional CSV columns
+  currency?: string;
+  [key: string]: string | undefined; // For additional CSV columns
 }
 
 export interface TransactionStats {
@@ -67,6 +102,7 @@ export interface TransactionStats {
   netAmount: number;
   transactionCount: number;
   averageTransaction: number;
+  defaultCurrency: string;
   topCategories: Array<{
     category: TransactionCategory;
     amount: number;
@@ -79,6 +115,7 @@ export interface MonthlyData {
   income: number;
   expenses: number;
   net: number;
+  currency: string;
 }
 
 export interface CategoryData {

@@ -85,7 +85,15 @@ export function csvToTransactions(
 
       transactions.push({
         date,
+        originalAmount: amount,
+        originalCurrency: 'USD', // Default currency for CSV imports
+        convertedAmount: amount,
+        convertedCurrency: 'USD',
+        conversionRate: 1,
+        conversionFee: 0,
+        // Legacy fields for backward compatibility
         amount,
+        currency: 'USD',
         vendor,
         description: description.trim(),
         type: amount > 0 ? 'income' : 'expense'
@@ -294,16 +302,52 @@ export function isValidCSVFile(file: File): boolean {
  */
 export function validateTransactionInput(input: any): TransactionInput | null {
   try {
-    const amount = typeof input.amount === 'string' ? parseFloat(input.amount) : input.amount;
-    if (isNaN(amount) || amount === 0) return null;
+    // Handle both legacy and new multi-currency formats
+    let originalAmount: number;
+    let originalCurrency: string;
+    let convertedAmount: number;
+    let convertedCurrency: string;
+    let conversionRate: number;
+    let conversionFee: number;
+
+    if (input.originalAmount !== undefined && input.convertedAmount !== undefined) {
+      // New multi-currency format
+      originalAmount = typeof input.originalAmount === 'string' ? parseFloat(input.originalAmount) : input.originalAmount;
+      originalCurrency = input.originalCurrency || 'USD';
+      convertedAmount = typeof input.convertedAmount === 'string' ? parseFloat(input.convertedAmount) : input.convertedAmount;
+      convertedCurrency = input.convertedCurrency || 'USD';
+      conversionRate = typeof input.conversionRate === 'string' ? parseFloat(input.conversionRate) : (input.conversionRate || 1);
+      conversionFee = typeof input.conversionFee === 'string' ? parseFloat(input.conversionFee) : (input.conversionFee || 0);
+    } else {
+      // Legacy format - convert to multi-currency
+      const amount = typeof input.amount === 'string' ? parseFloat(input.amount) : input.amount;
+      if (isNaN(amount) || amount === 0) return null;
+      
+      originalAmount = amount;
+      originalCurrency = input.currency || 'USD';
+      convertedAmount = amount;
+      convertedCurrency = input.currency || 'USD';
+      conversionRate = 1;
+      conversionFee = 0;
+    }
+
+    if (isNaN(originalAmount) || isNaN(convertedAmount)) return null;
 
     return {
-      amount,
+      originalAmount,
+      originalCurrency,
+      convertedAmount,
+      convertedCurrency,
+      conversionRate,
+      conversionFee,
+      // Legacy fields for backward compatibility
+      amount: originalAmount,
+      currency: originalCurrency,
       description: input.description?.trim() || 'Unknown transaction',
       vendor: input.vendor?.trim(),
       date: input.date ? new Date(input.date) : new Date(),
       category: input.category || 'Other',
-      type: input.type || (amount > 0 ? 'income' : 'expense'),
+      type: input.type || (originalAmount > 0 ? 'income' : 'expense'),
       receiptUrl: input.receiptUrl
     };
   } catch {
