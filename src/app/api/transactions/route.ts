@@ -16,8 +16,9 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
     const search = searchParams.get('search');
+    const targetCurrency = searchParams.get('currency');
     
-    logger.info({ requestId, limit, offset, search }, 'Fetching transactions with parameters');
+    logger.info({ requestId, limit, offset, search, targetCurrency }, 'Fetching transactions with parameters');
     
     let transactions;
     
@@ -27,6 +28,36 @@ export async function GET(request: NextRequest) {
     } else {
       transactions = transactionDb.getAll(limit, offset);
       logger.info({ requestId, resultCount: transactions.length }, 'Fetched all transactions');
+    }
+
+    // If a target currency is specified, convert all transactions to that currency
+    if (targetCurrency) {
+      const { convertAmount } = await import('@/lib/utils/currency');
+      const convertedTransactions = await Promise.all(transactions.map(async (t: any) => {
+        if (!t.originalAmount || !t.originalCurrency || t.originalCurrency === targetCurrency) {
+          return {
+            ...t,
+            convertedAmount: t.originalAmount || t.amount,
+            convertedCurrency: t.originalCurrency || targetCurrency
+          };
+        }
+        try {
+          const converted = await convertAmount(t.originalAmount, t.originalCurrency, targetCurrency);
+          return {
+            ...t,
+            convertedAmount: converted,
+            convertedCurrency: targetCurrency
+          };
+        } catch (e) {
+          logger.warn({ requestId, error: e instanceof Error ? e.message : e, t }, 'Currency conversion failed for transaction');
+          return {
+            ...t,
+            convertedAmount: t.originalAmount || t.amount,
+            convertedCurrency: t.originalCurrency || targetCurrency
+          };
+        }
+      }));
+      transactions = convertedTransactions;
     }
     
     return NextResponse.json({

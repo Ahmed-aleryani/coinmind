@@ -98,7 +98,8 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('/api/transactions');
+        // Fetch transactions converted to the selected default currency
+        const response = await fetch(`/api/transactions?currency=${defaultCurrency}`);
         const data = await response.json();
         
         if (data.success) {
@@ -174,7 +175,7 @@ export default function DashboardPage() {
     };
 
     fetchData();
-  }, []);
+  }, [defaultCurrency]);
 
   if (isLoading) {
     return (
