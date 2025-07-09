@@ -24,6 +24,39 @@ interface ChatInterfaceProps {
   className?: string;
 }
 
+// Simple language detection function
+function detectLanguage(text: string): string {
+  // Check for Arabic characters
+  const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+  if (arabicRegex.test(text)) {
+    return 'ar';
+  }
+  
+  // Check for other common languages
+  const chineseRegex = /[\u4E00-\u9FFF]/;
+  if (chineseRegex.test(text)) {
+    return 'zh';
+  }
+  
+  const japaneseRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/;
+  if (japaneseRegex.test(text)) {
+    return 'ja';
+  }
+  
+  const koreanRegex = /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/;
+  if (koreanRegex.test(text)) {
+    return 'ko';
+  }
+  
+  const hindiRegex = /[\u0900-\u097F]/;
+  if (hindiRegex.test(text)) {
+    return 'hi';
+  }
+  
+  // Default to English
+  return 'en';
+}
+
 export function ChatInterface({ className }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -152,15 +185,27 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     setIsLoading(true);
 
     try {
+      // Detect language for the message
+      const detectedLanguage = detectLanguage(content.trim());
+      console.log('Detected language:', detectedLanguage);
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: content.trim() }),
+        body: JSON.stringify({ 
+          message: content.trim(),
+          language: detectedLanguage
+        }),
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const data = await response.json();
+      console.log('Chat API response:', data);
 
       if (data.success) {
         const assistantMessage: Message = {
@@ -174,18 +219,31 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
         setMessages(prev => [...prev, assistantMessage]);
       } else {
-        throw new Error(data.error || 'Unknown error');
+        throw new Error(data.error || 'Unknown error from server');
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorMessage: Message = {
+      
+      let errorMessage = 'Sorry, I encountered an error. Please try again.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (error.message.includes('API key')) {
+          errorMessage = 'Configuration error. Please make sure your Gemini API key is configured correctly.';
+        } else {
+          errorMessage = `Error: ${error.message}`;
+        }
+      }
+      
+      const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
-        content: 'Sorry, I encountered an error. Please make sure your Gemini API key is configured correctly in your environment variables.',
+        content: errorMessage,
         sender: 'assistant',
         timestamp: new Date(),
         type: 'error'
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
     }

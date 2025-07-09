@@ -41,6 +41,7 @@ export interface ParsedTransactionText {
   description?: string;
   date?: Date;
   category?: TransactionCategory;
+  type?: TransactionType;
 }
 
 export interface ReceiptData {
