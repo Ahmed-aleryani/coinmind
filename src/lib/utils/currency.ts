@@ -7,6 +7,11 @@ let cachedRates: Record<string, number> = {};
 let cachedBase = 'USD';
 let lastFetch = 0;
 
+// Fetch and cache all rates with a single API call (base USD)
+let globalRates: Record<string, number> = {};
+let globalRatesBase = 'USD';
+let globalRatesLastFetch = 0;
+
 export async function getExchangeRate(from: string, to: string): Promise<number> {
   const now = Date.now();
   if (cachedBase === from && cachedRates[to] && now - lastFetch < 60 * 60 * 1000) {
@@ -25,6 +30,39 @@ export async function getExchangeRate(from: string, to: string): Promise<number>
   return cachedRates[to];
 }
 
+export async function getGlobalRates(base: string = 'USD'): Promise<{ rates: Record<string, number>, base: string }> {
+  const now = Date.now();
+  if (globalRatesBase === base && Object.keys(globalRates).length > 0 && now - globalRatesLastFetch < 60 * 60 * 1000) {
+    return { rates: globalRates, base: globalRatesBase };
+  }
+  const url = `${API_URL}/${base}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Failed to fetch global exchange rates');
+  const data = await res.json() as { rates: Record<string, number> };
+  globalRates = data.rates;
+  globalRatesBase = base;
+  globalRatesLastFetch = now;
+  return { rates: globalRates, base: globalRatesBase };
+}
+
+// Convert using a global rates table (cross-rate math)
+export function convertWithGlobalRates(amount: number, from: string, to: string, rates: Record<string, number>, base: string): number {
+  if (from === to) return amount;
+  if (from === base) {
+    // Direct conversion from base
+    if (!rates[to]) throw new Error(`Currency ${to} not supported in rates`);
+    return amount * rates[to];
+  }
+  if (to === base) {
+    // Convert to base
+    if (!rates[from]) throw new Error(`Currency ${from} not supported in rates`);
+    return amount / rates[from];
+  }
+  // Cross-rate: from -> base -> to
+  if (!rates[from] || !rates[to]) throw new Error(`Currency ${from} or ${to} not supported in rates`);
+  return amount / rates[from] * rates[to];
+}
+
 export async function convertAmount(amount: number, from: string, to: string): Promise<number> {
   if (from === to) return amount;
   const rate = await getExchangeRate(from, to);
@@ -36,6 +74,52 @@ export async function getSupportedCurrencies(): Promise<string[]> {
   if (!res.ok) throw new Error('Failed to fetch supported currencies');
   const data = await res.json() as { rates: Record<string, number> };
   return Object.keys(data.rates);
+}
+
+// Batch convert an array of {amount, from} to a target currency
+export async function batchConvertAmounts(
+  items: { amount: number; from: string }[],
+  to: string
+): Promise<number[]> {
+  // Group by source currency
+  const groups: Record<string, { idx: number; amount: number }[]> = {};
+  items.forEach((item, idx) => {
+    if (!groups[item.from]) groups[item.from] = [];
+    groups[item.from].push({ idx, amount: item.amount });
+  });
+  // Fetch all needed rates in one call per source currency
+  const now = Date.now();
+  let results: number[] = new Array(items.length);
+  for (const from in groups) {
+    if (from === to) {
+      groups[from].forEach(({ idx, amount }) => {
+        results[idx] = amount;
+      });
+      continue;
+    }
+    // Use cached rates if available and fresh
+    if (cachedBase === from && cachedRates[to] && now - lastFetch < 60 * 60 * 1000) {
+      const rate = cachedRates[to];
+      groups[from].forEach(({ idx, amount }) => {
+        results[idx] = amount * rate;
+      });
+      continue;
+    }
+    // Fetch rates for this base
+    const url = `${API_URL}/${from}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to fetch exchange rates');
+    const data = await res.json() as { rates: Record<string, number> };
+    cachedRates = data.rates;
+    cachedBase = from;
+    lastFetch = now;
+    const rate = cachedRates[to];
+    if (!rate) throw new Error(`Currency ${to} not supported for base ${from}`);
+    groups[from].forEach(({ idx, amount }) => {
+      results[idx] = amount * rate;
+    });
+  }
+  return results;
 }
 
 // DEBUG: Direct test for currency conversion utility

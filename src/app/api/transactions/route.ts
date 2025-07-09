@@ -32,32 +32,62 @@ export async function GET(request: NextRequest) {
 
     // If a target currency is specified, convert all transactions to that currency
     if (targetCurrency) {
-      const { convertAmount } = await import('@/lib/utils/currency');
-      const convertedTransactions = await Promise.all(transactions.map(async (t: any) => {
-        if (!t.originalAmount || !t.originalCurrency || t.originalCurrency === targetCurrency) {
-          return {
-            ...t,
-            convertedAmount: t.originalAmount || t.amount,
-            convertedCurrency: t.originalCurrency || targetCurrency
-          };
-        }
+      const { getGlobalRates, convertWithGlobalRates } = await import('@/lib/utils/currency');
+      // Fetch all rates with a single API call (base USD)
+      let ratesObj;
+      try {
+        ratesObj = await getGlobalRates('USD');
+      } catch (e) {
+        logger.warn({ requestId, error: e instanceof Error ? e.message : e }, 'Global rates fetch failed, falling back to batch conversion');
+        // Fallback to previous batch method
+        const { batchConvertAmounts } = await import('@/lib/utils/currency');
+        const items = transactions.map((t: any) => ({
+          amount: t.originalAmount || t.amount,
+          from: t.originalCurrency || targetCurrency
+        }));
+        let convertedAmounts: number[] = [];
         try {
-          const converted = await convertAmount(t.originalAmount, t.originalCurrency, targetCurrency);
-          return {
-            ...t,
-            convertedAmount: converted,
-            convertedCurrency: targetCurrency
-          };
+          convertedAmounts = await batchConvertAmounts(items, targetCurrency);
         } catch (e) {
-          logger.warn({ requestId, error: e instanceof Error ? e.message : e, t }, 'Currency conversion failed for transaction');
-          return {
-            ...t,
-            convertedAmount: t.originalAmount || t.amount,
-            convertedCurrency: t.originalCurrency || targetCurrency
-          };
+          logger.warn({ requestId, error: e instanceof Error ? e.message : e }, 'Batch currency conversion failed, falling back to per-transaction');
+          const { convertAmount } = await import('@/lib/utils/currency');
+          convertedAmounts = await Promise.all(transactions.map(async (t: any) => {
+            if (!t.originalAmount || !t.originalCurrency || t.originalCurrency === targetCurrency) {
+              return t.originalAmount || t.amount;
+            }
+            try {
+              return await convertAmount(t.originalAmount, t.originalCurrency, targetCurrency);
+            } catch {
+              return t.originalAmount || t.amount;
+            }
+          }));
         }
-      }));
-      transactions = convertedTransactions;
+        transactions = transactions.map((t: any, i: number) => ({
+          ...t,
+          convertedAmount: convertedAmounts[i],
+          convertedCurrency: targetCurrency
+        }));
+        return NextResponse.json({
+          success: true,
+          data: transactions
+        });
+      }
+      const { rates, base } = ratesObj;
+      transactions = transactions.map((t: any) => {
+        const origAmount = t.originalAmount || t.amount;
+        const origCurrency = t.originalCurrency || targetCurrency;
+        let converted = origAmount;
+        try {
+          converted = convertWithGlobalRates(origAmount, origCurrency, targetCurrency, rates, base);
+        } catch (e) {
+          logger.warn({ requestId, error: e instanceof Error ? e.message : e, t }, 'Global cross-rate conversion failed, using original amount');
+        }
+        return {
+          ...t,
+          convertedAmount: converted,
+          convertedCurrency: targetCurrency
+        };
+      });
     }
     
     return NextResponse.json({
