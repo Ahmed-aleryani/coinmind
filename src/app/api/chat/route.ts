@@ -646,7 +646,8 @@ export async function POST(request: NextRequest) {
             const symbols: Record<string, string> = {
               USD: '$', EUR: '€', GBP: '£', JPY: '¥', SAR: 'ر.س', EGP: '£', AED: 'د.إ', KWD: 'د.ك', BHD: 'ب.د', JOD: 'د.ا',
               CNY: '¥', KRW: '₩', INR: '₹', RUB: '₽', TRY: '₺', PLN: 'zł', SEK: 'kr', NOK: 'kr', DKK: 'kr',
-              MAD: 'د.م', DZD: 'دج', TND: 'د.ت', QAR: 'ر.ق', LBP: 'ل.ل'
+              MAD: 'د.م', DZD: 'دج', TND: 'د.ت', QAR: 'ر.ق', LBP: 'ل.ل',
+              YER: 'ر.ي', // Yemeni Rial
             };
             return symbols[code] || code;
           }
@@ -819,7 +820,12 @@ function extractTransactionFromMessage(message: string, languageCode: string): {
   // Extract amount using currency patterns
   const currencyPatterns: Record<string, RegExp[]> = {
     en: [/\$([0-9,]+\.?[0-9]*)/, /([0-9,]+\.?[0-9]*)\s*dollars?/i],
-    ar: [/ر\.س\s*([0-9,]+\.?[0-9]*)/, /([0-9,]+\.?[0-9]*)\s*ريال/],
+    ar: [
+      /ر\.س\s*([0-9,]+\.?[0-9]*)/, // SAR
+      /([0-9,]+\.?[0-9]*)\s*ريال/, // SAR generic
+      /ر\.ي\s*([0-9,]+\.?[0-9]*)/, // Rial Yemeni symbol
+      /([0-9,]+\.?[0-9]*)\s*ريال يمني/, // Rial Yemeni Arabic
+    ],
     es: [/€([0-9,]+\.?[0-9]*)/, /([0-9,]+\.?[0-9]*)\s*euros?/i],
     fr: [/€([0-9,]+\.?[0-9]*)/, /([0-9,]+\.?[0-9]*)\s*euros?/i],
     de: [/€([0-9,]+\.?[0-9]*)/, /([0-9,]+\.?[0-9]*)\s*euros?/i],

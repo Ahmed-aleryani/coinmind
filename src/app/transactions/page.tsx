@@ -501,6 +501,7 @@ export default function Transactions() {
                     <SelectItem value="CNY">CNY</SelectItem>
                     <SelectItem value="SAR">SAR</SelectItem>
                     <SelectItem value="AED">AED</SelectItem>
+                    <SelectItem value="YER">YER</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
