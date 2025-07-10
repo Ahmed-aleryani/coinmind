@@ -965,9 +965,12 @@ export async function POST(request: NextRequest) {
       if (period) {
         // Determine if the question is about income, expenses, or both
         const lowerMsg = message.toLowerCase();
+        // Stricter mutually exclusive detection
+        const expenseRegex = /\b(expense|spent|أنفقت|مصروف|مصروفات|gasto|dépense|ausgabe|расход|支出|지출|خَرَجَ|harcama|uitgave|wydatek|utgift|meno)\b/;
+        const incomeRegex = /\b(income|earned|received|دخل|كسبت|استلمت|ingreso|revenu|einkommen|доход|收入|수입|gelir|inkomen|dochód|inkomst|inntekt|tulot)\b/;
         let statType: 'income' | 'expenses' | 'all' = 'all';
-        if (/income|دخل|ingreso|revenu|einkommen|доход|收入|수입|आय|gelir|inkomen|dochód|inkomst|inntekt|tulot/.test(lowerMsg)) statType = 'income';
-        else if (/expense|spent|أنفقت|مصروف|gasto|dépense|ausgabe|расход|支出|지출|खर्च|harcama|uitgave|wydatek|utgift|utgift|meno/.test(lowerMsg)) statType = 'expenses';
+        if (expenseRegex.test(lowerMsg) && !incomeRegex.test(lowerMsg)) statType = 'expenses';
+        else if (incomeRegex.test(lowerMsg) && !expenseRegex.test(lowerMsg)) statType = 'income';
         // Query stats from DB
         const stats = await transactionDb.getStats(period.start, period.end);
         // Format response
@@ -992,17 +995,30 @@ export async function POST(request: NextRequest) {
         const label = (periodLabels[lang] && periodLabels[lang][period.label]) || period.label;
         let responseText = '';
         if (statType === 'income') {
-          responseText = lang === 'ar' ? `دخل${label === 'today' ? ' اليوم' : ' في ' + label}: ${answer}` : `Income ${label}: ${answer}`;
+          // Only show income, bold the amount+currency, keep language order
+          if (lang === 'ar') {
+            responseText = `الدخل ${label}: **${answer}**`;
+          } else {
+            responseText = `Income ${label}: **${answer}**`;
+          }
         } else if (statType === 'expenses') {
-          responseText = lang === 'ar' ? `المصروفات${label === 'today' ? ' اليوم' : ' في ' + label}: ${answer}` : `Expenses ${label}: ${answer}`;
+          // Only show expenses, bold the amount+currency, keep language order
+          if (lang === 'ar') {
+            responseText = `المصروفات ${label}: **${answer}**`;
+          } else {
+            responseText = `Expenses ${label}: **${answer}**`;
+          }
         } else {
-          responseText = lang === 'ar' ? `الدخل: ${formatNumberEn(stats.totalIncome)}${getCurrencySymbol(currency)}, المصروفات: ${formatNumberEn(stats.totalExpenses)}${getCurrencySymbol(currency)}, الصافي: ${formatNumberEn(stats.netAmount)}${getCurrencySymbol(currency)} (${label})` : `Income: ${formatNumberEn(stats.totalIncome)}${getCurrencySymbol(currency)}, Expenses: ${formatNumberEn(stats.totalExpenses)}${getCurrencySymbol(currency)}, Net: ${formatNumberEn(stats.netAmount)}${getCurrencySymbol(currency)} (${label})`;
+          // Show all (income, expenses, net)
+          if (lang === 'ar') {
+            responseText = `الدخل: **${formatNumberEn(stats.totalIncome)}${getCurrencySymbol(currency)}**, المصروفات: **${formatNumberEn(stats.totalExpenses)}${getCurrencySymbol(currency)}**, الصافي: **${formatNumberEn(stats.netAmount)}${getCurrencySymbol(currency)}** (${label})`;
+          } else {
+            responseText = `Income: **${formatNumberEn(stats.totalIncome)}${getCurrencySymbol(currency)}**, Expenses: **${formatNumberEn(stats.totalExpenses)}${getCurrencySymbol(currency)}**, Net: **${formatNumberEn(stats.netAmount)}${getCurrencySymbol(currency)}** (${label})`;
+          }
         }
-        
         // Add interactive follow-up question
         const followUp = generateFollowUpQuestions(stats, statType, period.label, lang);
         responseText += `\n\n${followUp}`;
-        
         return NextResponse.json({ success: true, data: { message: responseText, detectedLanguage: lang, isRTL: detectedLanguage.isRTL, transactionAdded: false } });
       }
 
