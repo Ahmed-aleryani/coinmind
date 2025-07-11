@@ -276,10 +276,19 @@ export const transactionDb = {
     const categoryStats: Array<{ category: string; amount: number; count: number }> = [];
     const categoryMap: Record<string, { amount: number; count: number }> = {};
 
+    const uniqueCurrencies = [...new Set(transactions.map(tx => tx.currency))];
+    const exchangeRates: Record<string, number> = {};
+    for (const currency of uniqueCurrencies) {
+      if (currency !== defaultCurrency) {
+        exchangeRates[currency] = await getExchangeRate(currency, defaultCurrency);
+      }
+    }
+
     for (const tx of transactions) {
       let amount = tx.amount;
       if (tx.currency !== defaultCurrency) {
-        amount = await convertAmount(tx.amount, tx.currency, defaultCurrency);
+        const rate = exchangeRates[tx.currency];
+        amount = tx.amount * rate;
       }
       if (tx.type === 'income') totalIncome += amount;
       if (tx.type === 'expense') totalExpenses += Math.abs(amount);
