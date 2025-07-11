@@ -158,7 +158,6 @@ interface ChatInputProps {
   setVoiceLang: (lang: string) => void;
   onVoiceInput: () => void;
   onCSVImport: () => void;
-  onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 function ChatInput({
@@ -173,7 +172,6 @@ function ChatInput({
   setVoiceLang,
   onVoiceInput,
   onCSVImport,
-  onFileUpload,
 }: ChatInputProps) {
   return (
     <div className="border-t p-4">
@@ -270,12 +268,6 @@ function ChatInput({
               <Send className="h-4 w-4" />
             </Button>
           </div>
-          <input
-            type="file"
-            accept=".csv"
-            onChange={onFileUpload}
-            className="hidden"
-          />
         </div>
       </form>
     </div>
@@ -626,19 +618,25 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   };
 
   const handleCSVImport = () => {
+    console.log("CSV Import button clicked");
+    console.log("fileInputRef.current:", fileInputRef.current);
     fileInputRef.current?.click();
   };
 
   const handleFileUpload = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
+    console.log("File upload triggered");
     const file = event.target.files?.[0];
     if (!file) return;
+
+    console.log("File selected:", file.name, file.type, file.size);
 
     // Reset the input value to allow selecting the same file again
     event.target.value = "";
 
     if (!file.name.toLowerCase().endsWith(".csv")) {
+      console.log("File is not a CSV");
       const errorMessage: Message = {
         id: Date.now().toString(),
         content: "Please select a valid CSV file.",
@@ -786,6 +784,13 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept=".csv"
+        style={{ display: "none" }}
+      />
       <MessageList
         messages={messages}
         isLoading={isLoading}
@@ -804,7 +809,6 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         setVoiceLang={setVoiceLang}
         onVoiceInput={handleVoiceInput}
         onCSVImport={handleCSVImport}
-        onFileUpload={handleFileUpload}
       />
     </div>
   );

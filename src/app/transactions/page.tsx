@@ -1,19 +1,64 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { formatCurrency, formatDate, getCategoryEmoji } from '@/lib/utils/formatters';
-import { Plus, Search, Filter, MoreHorizontal, Edit, Trash2, Download, Upload } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { CurrencyInfo } from '@/components/ui/currency-info';
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  formatCurrency,
+  formatDate,
+  getCategoryEmoji,
+} from "@/lib/utils/formatters";
+import {
+  Plus,
+  Search,
+  Filter,
+  MoreHorizontal,
+  Edit,
+  Trash2,
+  Download,
+  Upload,
+} from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { CurrencyInfo } from "@/components/ui/currency-info";
 
 interface Transaction {
   id: string;
@@ -22,7 +67,7 @@ interface Transaction {
   vendor: string;
   description: string;
   category: string;
-  type: 'income' | 'expense';
+  type: "income" | "expense";
   // Multi-currency fields
   originalAmount?: number;
   originalCurrency?: string;
@@ -33,39 +78,42 @@ interface Transaction {
 }
 
 const CATEGORIES = [
-  'Food & Drink',
-  'Transportation',
-  'Utilities',
-  'Entertainment',
-  'Shopping',
-  'Healthcare',
-  'Education',
-  'Income',
-  'Transfer',
-  'Other'
+  "Food & Drink",
+  "Transportation",
+  "Utilities",
+  "Entertainment",
+  "Shopping",
+  "Healthcare",
+  "Education",
+  "Income",
+  "Transfer",
+  "Other",
 ];
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
+  const [filteredTransactions, setFilteredTransactions] = useState<
+    Transaction[]
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editingTransaction, setEditingTransaction] =
+    useState<Transaction | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [defaultCurrency, setDefaultCurrency] = useState('USD');
+  const [defaultCurrency, setDefaultCurrency] = useState("USD");
   const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
   const [isCurrencyLoading, setIsCurrencyLoading] = useState(false);
   const [formData, setFormData] = useState({
-    amount: '',
-    currency: 'USD',
-    vendor: '',
-    description: '',
-    category: '',
-    type: 'expense' as 'income' | 'expense',
-    date: new Date().toISOString().split('T')[0]
+    amount: "",
+    currency: "USD",
+    vendor: "",
+    description: "",
+    category: "",
+    type: "expense" as "income" | "expense",
+    date: new Date().toISOString().split("T")[0],
   });
 
   // Fetch supported currencies and user default currency
@@ -73,14 +121,14 @@ export default function Transactions() {
     const fetchCurrencies = async () => {
       try {
         setIsCurrencyLoading(true);
-        const res = await fetch('/api/user-currency');
+        const res = await fetch("/api/user-currency");
         const data = await res.json();
-        setDefaultCurrency(data.defaultCurrency || 'USD');
-        const curRes = await fetch('/api/currencies');
+        setDefaultCurrency(data.defaultCurrency || "USD");
+        const curRes = await fetch("/api/currencies");
         const curData = await curRes.json();
-        setSupportedCurrencies(curData.currencies || ['USD']);
+        setSupportedCurrencies(curData.currencies || ["USD"]);
       } catch (e) {
-        setSupportedCurrencies(['USD']);
+        setSupportedCurrencies(["USD"]);
       } finally {
         setIsCurrencyLoading(false);
       }
@@ -88,32 +136,36 @@ export default function Transactions() {
     fetchCurrencies();
   }, []);
 
-  const handleCurrencyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleCurrencyChange = async (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
     const newCurrency = e.target.value;
     setDefaultCurrency(newCurrency);
-    await fetch('/api/user-currency', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ defaultCurrency: newCurrency })
+    await fetch("/api/user-currency", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ defaultCurrency: newCurrency }),
     });
     window.location.reload();
   };
 
   const fetchTransactions = async () => {
     try {
-      const response = await fetch(`/api/transactions?currency=${defaultCurrency}`);
+      const response = await fetch(
+        `/api/transactions?currency=${defaultCurrency}`
+      );
       const data = await response.json();
-      
+
       if (data.success) {
         const parsedTransactions = data.data.map((t: any) => ({
           ...t,
-          date: new Date(t.date)
+          date: new Date(t.date),
         }));
         setTransactions(parsedTransactions);
         setFilteredTransactions(parsedTransactions);
       }
     } catch (error) {
-      console.error('Error fetching transactions:', error);
+      console.error("Error fetching transactions:", error);
     } finally {
       setIsLoading(false);
     }
@@ -129,21 +181,22 @@ export default function Transactions() {
 
     // Search filter
     if (searchQuery) {
-      filtered = filtered.filter(t => 
-        t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.category.toLowerCase().includes(searchQuery.toLowerCase())
+      filtered = filtered.filter(
+        (t) =>
+          t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.category.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
     // Category filter
-    if (categoryFilter !== 'all') {
-      filtered = filtered.filter(t => t.category === categoryFilter);
+    if (categoryFilter !== "all") {
+      filtered = filtered.filter((t) => t.category === categoryFilter);
     }
 
     // Type filter
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(t => t.type === typeFilter);
+    if (typeFilter !== "all") {
+      filtered = filtered.filter((t) => t.type === typeFilter);
     }
 
     setFilteredTransactions(filtered);
@@ -151,31 +204,31 @@ export default function Transactions() {
 
   const handleEdit = (transaction: Transaction) => {
     setEditingTransaction(transaction);
-            setFormData({
-          amount: Math.abs(transaction.amount).toString(),
-          currency: transaction.originalCurrency || 'USD',
-          vendor: transaction.vendor,
-          description: transaction.description,
-          category: transaction.category,
-          type: transaction.type,
-          date: transaction.date.toISOString().split('T')[0]
-        });
+    setFormData({
+      amount: Math.abs(transaction.amount).toString(),
+      currency: transaction.originalCurrency || "USD",
+      vendor: transaction.vendor,
+      description: transaction.description,
+      category: transaction.category,
+      type: transaction.type,
+      date: transaction.date.toISOString().split("T")[0],
+    });
     setIsEditDialogOpen(true);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this transaction?')) return;
+    if (!confirm("Are you sure you want to delete this transaction?")) return;
 
     try {
       const response = await fetch(`/api/transactions/${id}`, {
-        method: 'DELETE'
+        method: "DELETE",
       });
 
       if (response.ok) {
         await fetchTransactions();
       }
     } catch (error) {
-      console.error('Error deleting transaction:', error);
+      console.error("Error deleting transaction:", error);
     }
   };
 
@@ -183,23 +236,28 @@ export default function Transactions() {
     e.preventDefault();
 
     const transactionData = {
-      amount: formData.type === 'expense' ? -Math.abs(Number(formData.amount)) : Math.abs(Number(formData.amount)),
+      amount:
+        formData.type === "expense"
+          ? -Math.abs(Number(formData.amount))
+          : Math.abs(Number(formData.amount)),
       currency: formData.currency,
       vendor: formData.vendor,
       description: formData.description,
       category: formData.category,
       type: formData.type,
-      date: new Date(formData.date)
+      date: new Date(formData.date),
     };
 
     try {
-      const url = editingTransaction ? `/api/transactions/${editingTransaction.id}` : '/api/transactions';
-      const method = editingTransaction ? 'PUT' : 'POST';
+      const url = editingTransaction
+        ? `/api/transactions/${editingTransaction.id}`
+        : "/api/transactions";
+      const method = editingTransaction ? "PUT" : "POST";
 
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(transactionData)
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(transactionData),
       });
 
       if (response.ok) {
@@ -208,26 +266,26 @@ export default function Transactions() {
         setIsAddDialogOpen(false);
         setEditingTransaction(null);
         setFormData({
-          amount: '',
-          currency: 'USD',
-          vendor: '',
-          description: '',
-          category: '',
-          type: 'expense',
-          date: new Date().toISOString().split('T')[0]
+          amount: "",
+          currency: "USD",
+          vendor: "",
+          description: "",
+          category: "",
+          type: "expense",
+          date: new Date().toISOString().split("T")[0],
         });
       }
     } catch (error) {
-      console.error('Error saving transaction:', error);
+      console.error("Error saving transaction:", error);
     }
   };
 
   const totalIncome = filteredTransactions
-    .filter(t => t.type === 'income')
+    .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + (t.convertedAmount || t.amount), 0);
-  
+
   const totalExpenses = filteredTransactions
-    .filter(t => t.type === 'expense')
+    .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + Math.abs(t.convertedAmount || t.amount), 0);
 
   if (isLoading) {
@@ -274,13 +332,17 @@ export default function Transactions() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Transactions</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Total Transactions
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{filteredTransactions.length}</div>
+            <div className="text-2xl font-bold">
+              {filteredTransactions.length}
+            </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Total Income</CardTitle>
@@ -291,10 +353,12 @@ export default function Transactions() {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Total Expenses
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
@@ -322,14 +386,14 @@ export default function Transactions() {
                 />
               </div>
             </div>
-            
+
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
               <SelectTrigger className="w-full md:w-48">
                 <SelectValue placeholder="All Categories" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                {CATEGORIES.map(category => (
+                {CATEGORIES.map((category) => (
                   <SelectItem key={category} value={category}>
                     {getCategoryEmoji(category)} {category}
                   </SelectItem>
@@ -370,9 +434,7 @@ export default function Transactions() {
             <TableBody>
               {filteredTransactions.map((transaction) => (
                 <TableRow key={transaction.id}>
-                  <TableCell>
-                    {formatDate(transaction.date, 'long')}
-                  </TableCell>
+                  <TableCell>{formatDate(transaction.date, "long")}</TableCell>
                   <TableCell className="font-medium">
                     {transaction.description}
                   </TableCell>
@@ -384,15 +446,30 @@ export default function Transactions() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={transaction.type === 'income' ? 'default' : 'secondary'}>
+                    <Badge
+                      variant={
+                        transaction.type === "income" ? "default" : "secondary"
+                      }
+                    >
                       {transaction.type}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex flex-col items-end">
-                      <span className={`font-bold ${transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                        {transaction.type === 'income' ? '+' : '-'}
-                        {formatCurrency(Math.abs(transaction.convertedAmount || transaction.amount), { currency: defaultCurrency })}
+                      <span
+                        className={`font-bold ${
+                          transaction.type === "income"
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {transaction.type === "income" ? "+" : "-"}
+                        {formatCurrency(
+                          Math.abs(
+                            transaction.convertedAmount || transaction.amount
+                          ),
+                          { currency: defaultCurrency }
+                        )}
                       </span>
                       {transaction.convertedCurrency && (
                         <span className="text-xs text-muted-foreground">
@@ -402,15 +479,36 @@ export default function Transactions() {
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
-                    <CurrencyInfo
-                      originalAmount={transaction.originalAmount}
-                      originalCurrency={transaction.originalCurrency}
-                      convertedAmount={transaction.convertedAmount || transaction.amount}
-                      convertedCurrency={transaction.convertedCurrency}
-                      conversionRate={transaction.conversionRate}
-                      conversionFee={transaction.conversionFee}
-                      className="text-right"
-                    />
+                    <div className="text-right">
+                      <div
+                        className={`font-medium ${
+                          transaction.type === "income"
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {formatCurrency(
+                          transaction.convertedAmount || transaction.amount,
+                          {
+                            currency:
+                              transaction.convertedCurrency || defaultCurrency,
+                          }
+                        )}
+                      </div>
+                      <CurrencyInfo
+                        originalAmount={transaction.originalAmount}
+                        originalCurrency={transaction.originalCurrency}
+                        convertedAmount={
+                          transaction.convertedAmount || transaction.amount
+                        }
+                        convertedCurrency={
+                          transaction.convertedCurrency || defaultCurrency
+                        }
+                        conversionRate={transaction.conversionRate}
+                        conversionFee={transaction.conversionFee}
+                        className="text-right"
+                      />
+                    </div>
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -420,11 +518,13 @@ export default function Transactions() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEdit(transaction)}>
+                        <DropdownMenuItem
+                          onClick={() => handleEdit(transaction)}
+                        >
                           <Edit className="w-4 h-4 mr-2" />
                           Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onClick={() => handleDelete(transaction.id)}
                           className="text-destructive"
                         >
@@ -442,32 +542,37 @@ export default function Transactions() {
       </Card>
 
       {/* Add/Edit Transaction Dialog */}
-      <Dialog open={isAddDialogOpen || isEditDialogOpen} onOpenChange={(open) => {
-        setIsAddDialogOpen(open);
-        setIsEditDialogOpen(open);
-        if (!open) {
-          setEditingTransaction(null);
-          setFormData({
-            amount: '',
-            currency: 'USD',
-            vendor: '',
-            description: '',
-            category: '',
-            type: 'expense',
-            date: new Date().toISOString().split('T')[0]
-          });
-        }
-      }}>
+      <Dialog
+        open={isAddDialogOpen || isEditDialogOpen}
+        onOpenChange={(open) => {
+          setIsAddDialogOpen(open);
+          setIsEditDialogOpen(open);
+          if (!open) {
+            setEditingTransaction(null);
+            setFormData({
+              amount: "",
+              currency: "USD",
+              vendor: "",
+              description: "",
+              category: "",
+              type: "expense",
+              date: new Date().toISOString().split("T")[0],
+            });
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingTransaction ? 'Edit Transaction' : 'Add New Transaction'}
+              {editingTransaction ? "Edit Transaction" : "Add New Transaction"}
             </DialogTitle>
             <DialogDescription>
-              {editingTransaction ? 'Update the transaction details.' : 'Add a new transaction to your records.'}
+              {editingTransaction
+                ? "Update the transaction details."
+                : "Add a new transaction to your records."}
             </DialogDescription>
           </DialogHeader>
-          
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div>
@@ -478,15 +583,21 @@ export default function Transactions() {
                   step="0.01"
                   placeholder="0.00"
                   value={formData.amount}
-                  onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, amount: e.target.value }))
+                  }
                   required
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="currency">Currency</Label>
-                <Select value={formData.currency} onValueChange={(value) => 
-                  setFormData(prev => ({ ...prev, currency: value }))}>
+                <Select
+                  value={formData.currency}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({ ...prev, currency: value }))
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -505,11 +616,15 @@ export default function Transactions() {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div>
                 <Label htmlFor="type">Type</Label>
-                <Select value={formData.type} onValueChange={(value: 'income' | 'expense') => 
-                  setFormData(prev => ({ ...prev, type: value }))}>
+                <Select
+                  value={formData.type}
+                  onValueChange={(value: "income" | "expense") =>
+                    setFormData((prev) => ({ ...prev, type: value }))
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -528,20 +643,26 @@ export default function Transactions() {
                   id="vendor"
                   placeholder="e.g., Starbucks"
                   value={formData.vendor}
-                  onChange={(e) => setFormData(prev => ({ ...prev, vendor: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, vendor: e.target.value }))
+                  }
                   required
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="category">Category</Label>
-                <Select value={formData.category} onValueChange={(value) => 
-                  setFormData(prev => ({ ...prev, category: value }))}>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({ ...prev, category: value }))
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CATEGORIES.map(category => (
+                    {CATEGORIES.map((category) => (
                       <SelectItem key={category} value={category}>
                         {getCategoryEmoji(category)} {category}
                       </SelectItem>
@@ -557,7 +678,12 @@ export default function Transactions() {
                 id="description"
                 placeholder="Transaction description..."
                 value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    description: e.target.value,
+                  }))
+                }
                 required
               />
             </div>
@@ -568,20 +694,26 @@ export default function Transactions() {
                 id="date"
                 type="date"
                 value={formData.date}
-                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, date: e.target.value }))
+                }
                 required
               />
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => {
-                setIsAddDialogOpen(false);
-                setIsEditDialogOpen(false);
-              }}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsAddDialogOpen(false);
+                  setIsEditDialogOpen(false);
+                }}
+              >
                 Cancel
               </Button>
               <Button type="submit">
-                {editingTransaction ? 'Update' : 'Add'} Transaction
+                {editingTransaction ? "Update" : "Add"} Transaction
               </Button>
             </DialogFooter>
           </form>
@@ -589,4 +721,4 @@ export default function Transactions() {
       </Dialog>
     </div>
   );
-} 
+}

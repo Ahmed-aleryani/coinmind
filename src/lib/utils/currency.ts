@@ -1,5 +1,3 @@
-import fetch from "node-fetch";
-
 const API_URL = "https://api.exchangerate-api.com/v4/latest";
 
 // Cache rates for 1 hour
