@@ -1,27 +1,36 @@
-import fetch from 'node-fetch';
+import fetch from "node-fetch";
 
-const API_URL = 'https://api.exchangerate-api.com/v4/latest';
+const API_URL = "https://api.exchangerate-api.com/v4/latest";
 
 // Cache rates for 1 hour
 let cachedRates: Record<string, number> = {};
-let cachedBase = 'USD';
+let cachedBase = "USD";
 let lastFetch = 0;
 
 // Fetch and cache all rates with a single API call (base USD)
 let globalRates: Record<string, number> = {};
-let globalRatesBase = 'USD';
+let globalRatesBase = "USD";
 let globalRatesLastFetch = 0;
 
-export async function getExchangeRate(from: string, to: string): Promise<number> {
+export async function getExchangeRate(
+  from: string,
+  to: string
+): Promise<number> {
   const now = Date.now();
-  if (cachedBase === from && cachedRates[to] && now - lastFetch < 60 * 60 * 1000) {
-    console.log(`[getExchangeRate] (CACHED) ${from} -> ${to}: ${cachedRates[to]}`);
+  if (
+    cachedBase === from &&
+    cachedRates[to] &&
+    now - lastFetch < 60 * 60 * 1000
+  ) {
+    console.log(
+      `[getExchangeRate] (CACHED) ${from} -> ${to}: ${cachedRates[to]}`
+    );
     return cachedRates[to];
   }
   const url = `${API_URL}/${from}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error('Failed to fetch exchange rates');
-  const data = await res.json() as { rates: Record<string, number> };
+  if (!res.ok) throw new Error("Failed to fetch exchange rates");
+  const data = (await res.json()) as { rates: Record<string, number> };
   cachedRates = data.rates;
   cachedBase = from;
   lastFetch = now;
@@ -30,15 +39,21 @@ export async function getExchangeRate(from: string, to: string): Promise<number>
   return cachedRates[to];
 }
 
-export async function getGlobalRates(base: string = 'USD'): Promise<{ rates: Record<string, number>, base: string }> {
+export async function getGlobalRates(
+  base: string = "USD"
+): Promise<{ rates: Record<string, number>; base: string }> {
   const now = Date.now();
-  if (globalRatesBase === base && Object.keys(globalRates).length > 0 && now - globalRatesLastFetch < 60 * 60 * 1000) {
+  if (
+    globalRatesBase === base &&
+    Object.keys(globalRates).length > 0 &&
+    now - globalRatesLastFetch < 60 * 60 * 1000
+  ) {
     return { rates: globalRates, base: globalRatesBase };
   }
   const url = `${API_URL}/${base}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error('Failed to fetch global exchange rates');
-  const data = await res.json() as { rates: Record<string, number> };
+  if (!res.ok) throw new Error("Failed to fetch global exchange rates");
+  const data = (await res.json()) as { rates: Record<string, number> };
   globalRates = data.rates;
   globalRatesBase = base;
   globalRatesLastFetch = now;
@@ -46,7 +61,13 @@ export async function getGlobalRates(base: string = 'USD'): Promise<{ rates: Rec
 }
 
 // Convert using a global rates table (cross-rate math)
-export function convertWithGlobalRates(amount: number, from: string, to: string, rates: Record<string, number>, base: string): number {
+export function convertWithGlobalRates(
+  amount: number,
+  from: string,
+  to: string,
+  rates: Record<string, number>,
+  base: string
+): number {
   if (from === to) return amount;
   if (from === base) {
     // Direct conversion from base
@@ -55,15 +76,21 @@ export function convertWithGlobalRates(amount: number, from: string, to: string,
   }
   if (to === base) {
     // Convert to base
-    if (!rates[from]) throw new Error(`Currency ${from} not supported in rates`);
+    if (!rates[from])
+      throw new Error(`Currency ${from} not supported in rates`);
     return amount / rates[from];
   }
   // Cross-rate: from -> base -> to
-  if (!rates[from] || !rates[to]) throw new Error(`Currency ${from} or ${to} not supported in rates`);
-  return amount / rates[from] * rates[to];
+  if (!rates[from] || !rates[to])
+    throw new Error(`Currency ${from} or ${to} not supported in rates`);
+  return (amount / rates[from]) * rates[to];
 }
 
-export async function convertAmount(amount: number, from: string, to: string): Promise<number> {
+export async function convertAmount(
+  amount: number,
+  from: string,
+  to: string
+): Promise<number> {
   if (from === to) return amount;
   const rate = await getExchangeRate(from, to);
   return amount * rate;
@@ -71,8 +98,8 @@ export async function convertAmount(amount: number, from: string, to: string): P
 
 export async function getSupportedCurrencies(): Promise<string[]> {
   const res = await fetch(API_URL);
-  if (!res.ok) throw new Error('Failed to fetch supported currencies');
-  const data = await res.json() as { rates: Record<string, number> };
+  if (!res.ok) throw new Error("Failed to fetch supported currencies");
+  const data = (await res.json()) as { rates: Record<string, number> };
   return Object.keys(data.rates);
 }
 
@@ -89,7 +116,7 @@ export async function batchConvertAmounts(
   });
   // Fetch all needed rates in one call per source currency
   const now = Date.now();
-  let results: number[] = new Array(items.length);
+  const results: number[] = new Array(items.length);
   for (const from in groups) {
     if (from === to) {
       groups[from].forEach(({ idx, amount }) => {
@@ -98,7 +125,11 @@ export async function batchConvertAmounts(
       continue;
     }
     // Use cached rates if available and fresh
-    if (cachedBase === from && cachedRates[to] && now - lastFetch < 60 * 60 * 1000) {
+    if (
+      cachedBase === from &&
+      cachedRates[to] &&
+      now - lastFetch < 60 * 60 * 1000
+    ) {
       const rate = cachedRates[to];
       groups[from].forEach(({ idx, amount }) => {
         results[idx] = amount * rate;
@@ -108,8 +139,8 @@ export async function batchConvertAmounts(
     // Fetch rates for this base
     const url = `${API_URL}/${from}`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to fetch exchange rates');
-    const data = await res.json() as { rates: Record<string, number> };
+    if (!res.ok) throw new Error("Failed to fetch exchange rates");
+    const data = (await res.json()) as { rates: Record<string, number> };
     cachedRates = data.rates;
     cachedBase = from;
     lastFetch = now;
@@ -123,26 +154,35 @@ export async function batchConvertAmounts(
 }
 
 // DEBUG: Direct test for currency conversion utility
-if (typeof process !== 'undefined' && import.meta && import.meta.url === `file://${process.argv[1]}`) {
+if (
+  typeof process !== "undefined" &&
+  process.argv &&
+  process.argv[1] &&
+  process.argv[1].endsWith("currency.ts")
+) {
   (async () => {
-    const from = 'USD';
-    const to = 'SAR';
+    const from = "USD";
+    const to = "SAR";
     const amount = 50;
     const rate = await getExchangeRate(from, to);
     const converted = await convertAmount(amount, from, to);
-    console.log(`[TEST] 50 ${from} to ${to}: rate=${rate}, converted=${converted}`);
+    console.log(
+      `[TEST] 50 ${from} to ${to}: rate=${rate}, converted=${converted}`
+    );
   })();
 }
 
 // TEMP: Conditional test for currency conversion utility (runs only in development)
-if (process.env.NODE_ENV === 'development') {
+if (process.env.NODE_ENV === "development") {
   (async () => {
-    console.log('[TEST] Running direct currency conversion test...');
-    const from = 'USD';
-    const to = 'SAR';
+    console.log("[TEST] Running direct currency conversion test...");
+    const from = "USD";
+    const to = "SAR";
     const amount = 50;
     const rate = await getExchangeRate(from, to);
     const converted = await convertAmount(amount, from, to);
-    console.log(`[TEST] 50 ${from} to ${to}: rate=${rate}, converted=${converted}`);
+    console.log(
+      `[TEST] 50 ${from} to ${to}: rate=${rate}, converted=${converted}`
+    );
   })();
 }

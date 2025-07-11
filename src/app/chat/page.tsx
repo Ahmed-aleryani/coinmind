@@ -1,4 +1,4 @@
-import { ChatInterface } from '@/components/chat/chat-interface';
+import { ChatInterface } from "@/components/chat/chat-interface";
 
 export default function ChatPage() {
   return (
@@ -6,13 +6,13 @@ export default function ChatPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">Chat with CoinMind</h1>
         <p className="text-muted-foreground">
-          Get financial insights and manage your transactions in any language. 
+          Get financial insights and manage your transactions in any language.
           Try voice input for hands-free interaction!
         </p>
       </div>
-      
+
       <ChatInterface className="w-full" />
-      
+
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-muted/50 rounded-lg p-4">
           <h3 className="font-semibold mb-2">🌍 Multi-Language Support</h3>
@@ -34,7 +34,7 @@ export default function ChatPage() {
             <div>• And many more...</div>
           </div>
         </div>
-        
+
         <div className="bg-muted/50 rounded-lg p-4">
           <h3 className="font-semibold mb-2">🎤 Voice Input</h3>
           <p className="text-sm text-muted-foreground mb-3">
@@ -59,52 +59,64 @@ export default function ChatPage() {
             <h4 className="font-medium mb-2 text-sm">Adding Transactions:</h4>
             <div className="space-y-2 text-xs">
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">English:</span> "I spent $50 on groceries"
+                <span className="font-medium">English:</span> &ldquo;I spent $50
+                on groceries&rdquo;
               </div>
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">العربية:</span> "دفعت 200 ريال على الطعام"
+                <span className="font-medium">العربية:</span> &ldquo;دفعت 200
+                ريال على الطعام&rdquo;
               </div>
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">Español:</span> "Gasté 25 euros en gasolina"
+                <span className="font-medium">Español:</span> &ldquo;Gasté 25
+                euros en gasolina&rdquo;
               </div>
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">Français:</span> "J'ai dépensé 30 euros pour l'essence"
+                <span className="font-medium">Français:</span> &ldquo;J&apos;ai
+                dépensé 30 euros pour l&apos;essence&rdquo;
               </div>
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">Deutsch:</span> "Ich habe 40 Euro für Lebensmittel ausgegeben"
+                <span className="font-medium">Deutsch:</span> &ldquo;Ich habe 40
+                Euro für Lebensmittel ausgegeben&rdquo;
               </div>
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">中文:</span> "我花了100元买食物"
+                <span className="font-medium">中文:</span>{" "}
+                &ldquo;我花了100元买食物&rdquo;
               </div>
             </div>
           </div>
-          
+
           <div>
             <h4 className="font-medium mb-2 text-sm">Asking Questions:</h4>
             <div className="space-y-2 text-xs">
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">English:</span> "How much did I spend this month?"
+                <span className="font-medium">English:</span> &ldquo;How much
+                did I spend this month?&rdquo;
               </div>
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">العربية:</span> "كم أنفقت هذا الشهر؟"
+                <span className="font-medium">العربية:</span> &ldquo;كم أنفقت
+                هذا الشهر؟&rdquo;
               </div>
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">Español:</span> "¿Cuánto gasté este mes?"
+                <span className="font-medium">Español:</span> &ldquo;¿Cuánto
+                gasté este mes?&rdquo;
               </div>
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">Français:</span> "Combien ai-je dépensé ce mois-ci?"
+                <span className="font-medium">Français:</span> &ldquo;Combien
+                ai-je dépensé ce mois-ci?&rdquo;
               </div>
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">Deutsch:</span> "Wie viel habe ich diesen Monat ausgegeben?"
+                <span className="font-medium">Deutsch:</span> &ldquo;Wie viel
+                habe ich diesen Monat ausgegeben?&rdquo;
               </div>
               <div className="bg-white dark:bg-gray-800 p-2 rounded">
-                <span className="font-medium">中文:</span> "我这个月花了多少钱？"
+                <span className="font-medium">中文:</span>{" "}
+                &ldquo;我这个月花了多少钱？&rdquo;
               </div>
             </div>
           </div>
         </div>
       </div>
-      
+
       <div className="mt-6 bg-blue-50 dark:bg-blue-950/20 rounded-lg p-4">
         <h3 className="font-semibold mb-2 text-blue-700 dark:text-blue-300">
           💡 Pro Tips
@@ -113,10 +125,10 @@ export default function ChatPage() {
           <div>
             <h4 className="font-medium mb-1">Try these examples:</h4>
             <ul className="space-y-1 text-muted-foreground">
-              <li>• "I spent $50 on groceries"</li>
-              <li>• "أنا أنفقت 200 ريال على الطعام"</li>
-              <li>• "How much did I spend this month?"</li>
-              <li>• "كم أنفقت هذا الشهر؟"</li>
+              <li>• &ldquo;I spent $50 on groceries&rdquo;</li>
+              <li>• &ldquo;أنا أنفقت 200 ريال على الطعام&rdquo;</li>
+              <li>• &ldquo;How much did I spend this month?&rdquo;</li>
+              <li>• &ldquo;كم أنفقت هذا الشهر؟&rdquo;</li>
             </ul>
           </div>
           <div>
@@ -162,4 +174,4 @@ export default function ChatPage() {
       </div>
     </div>
   );
-} 
+}
