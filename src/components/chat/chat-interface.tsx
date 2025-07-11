@@ -45,7 +45,7 @@ function getPlaceholderText(input: string): string {
     en: "Type your message... (e.g., 'I spent $50 on groceries')"
   };
   
-  return placeholders[language] || placeholders.en;
+  return placeholders[languageCode] || placeholders.en;
 }
 
 export function ChatInterface({ className }: ChatInterfaceProps) {
