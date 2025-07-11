@@ -134,13 +134,15 @@ if (typeof process !== 'undefined' && import.meta && import.meta.url === `file:/
   })();
 }
 
-// TEMP: Unconditional test for currency conversion utility
-(async () => {
-  console.log('[TEST] Running direct currency conversion test...');
-  const from = 'USD';
-  const to = 'SAR';
-  const amount = 50;
-  const rate = await getExchangeRate(from, to);
-  const converted = await convertAmount(amount, from, to);
-  console.log(`[TEST] 50 ${from} to ${to}: rate=${rate}, converted=${converted}`);
-})(); 
+// TEMP: Conditional test for currency conversion utility (runs only in development)
+if (process.env.NODE_ENV === 'development') {
+  (async () => {
+    console.log('[TEST] Running direct currency conversion test...');
+    const from = 'USD';
+    const to = 'SAR';
+    const amount = 50;
+    const rate = await getExchangeRate(from, to);
+    const converted = await convertAmount(amount, from, to);
+    console.log(`[TEST] 50 ${from} to ${to}: rate=${rate}, converted=${converted}`);
+  })();
+}
