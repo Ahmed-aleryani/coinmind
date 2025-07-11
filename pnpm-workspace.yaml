@@ -1,0 +1,11 @@
+ignoredBuiltDependencies:
+  - '@tailwindcss/oxide'
+  - better-sqlite3
+  - sharp
+  - unrs-resolver
+
+onlyBuiltDependencies:
+  - '@tailwindcss/oxide'
+  - better-sqlite3
+  - sharp
+  - unrs-resolver

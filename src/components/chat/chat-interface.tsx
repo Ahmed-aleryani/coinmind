@@ -158,6 +158,8 @@ interface ChatInputProps {
   setVoiceLang: (lang: string) => void;
   onVoiceInput: () => void;
   onCSVImport: () => void;
+  onReceiptUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  receiptFileInputRef: React.RefObject<HTMLInputElement | null>;
 }
 
 function ChatInput({
@@ -172,6 +174,8 @@ function ChatInput({
   setVoiceLang,
   onVoiceInput,
   onCSVImport,
+  onReceiptUpload,
+  receiptFileInputRef,
 }: ChatInputProps) {
   return (
     <div className="border-t p-4">
@@ -246,10 +250,18 @@ function ChatInput({
               variant="outline"
               size="icon"
               disabled={isLoading}
-              title="Upload receipt (coming soon)"
+              title="Upload receipt"
+              onClick={() => receiptFileInputRef.current?.click()}
             >
               <Camera className="h-4 w-4" />
             </Button>
+            <input
+              ref={receiptFileInputRef}
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={onReceiptUpload}
+            />
             <Button
               type="button"
               variant="outline"
@@ -321,6 +333,7 @@ interface WindowWithSpeechRecognition extends Window {
   SpeechRecognition?: new () => SpeechRecognition;
   webkitSpeechRecognition?: new () => SpeechRecognition;
   pendingCSVImport?: { csvText: string };
+  pendingReceiptData?: any;
 }
 
 // Get placeholder text based on detected language
@@ -371,7 +384,9 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const receiptFileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  // Remove receiptSaveMode state and related logic
 
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
@@ -466,6 +481,16 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     }
     if (content.includes("No, cancel import")) {
       await handleCSVConfirmation(false);
+      return;
+    }
+
+    // Handle receipt confirmations (English and Arabic)
+    if (content.includes("Yes, save this transaction") || content.includes("نعم، احفظ هذه المعاملة")) {
+      await handleReceiptConfirmation(true);
+      return;
+    }
+    if (content.includes("No, cancel") || content.includes("لا، إلغاء")) {
+      await handleReceiptConfirmation(false);
       return;
     }
 
@@ -621,6 +646,114 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     console.log("CSV Import button clicked");
     console.log("fileInputRef.current:", fileInputRef.current);
     fileInputRef.current?.click();
+  };
+
+  const handleReceiptUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Reset the input value to allow selecting the same file again
+    event.target.value = "";
+
+    // Validate file type
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        content: "Please select an image file (JPEG, PNG) or PDF.",
+        sender: "assistant",
+        timestamp: new Date(),
+        type: "error",
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+      return;
+    }
+
+    // Add user message about the upload
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      content: `📷 Uploading receipt: ${file.name}`,
+      sender: "user",
+      timestamp: new Date(),
+      type: "text",
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    setIsLoading(true);
+    // No receiptSaveMode logic
+
+    try {
+      const formData = new FormData();
+      formData.append("receipt", file);
+
+      const response = await fetch("/api/receipt", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to process receipt");
+      }
+
+      // Format receipt data for display with language support
+      const receiptData = result.data;
+      const isArabic = receiptData.detectedLanguage === "ar";
+      
+      // Format content based on detected language
+      const formattedContent = isArabic 
+        ? `📄 **تفاصيل الإيصال**\n\n**التاجر:** ${receiptData.merchant}\n**التاريخ:** ${receiptData.date}\n**المجموع:** **${receiptData.total} ${receiptData.currency}**\n**مستوى الثقة:** ${(receiptData.confidence * 100).toFixed(0)}%\n\n${receiptData.lineItems.length > 0 ? `**المواد:**\n${receiptData.lineItems.map((item: any) => `• ${item.description} - ${item.subtotal} ${receiptData.currency}`).join('\\n')}` : ''}\n\n${receiptData.splits.length > 0 ? `**التقسيمات:**\n${receiptData.splits.map((split: any) => `• ${split.person} - ${split.amount} ${receiptData.currency}`).join('\\n')}` : ''}\n\n${receiptData.unclearFields.length > 0 ? `**الحقول غير الواضحة:** ${receiptData.unclearFields.join(', ')}` : ''}`
+        : `📄 **Receipt Details**\n\n**Merchant:** ${receiptData.merchant}\n**Date:** ${receiptData.date}\n**Total:** **${receiptData.total} ${receiptData.currency}**\n**Confidence:** ${(receiptData.confidence * 100).toFixed(0)}%\n\n${receiptData.lineItems.length > 0 ? `**Items:**\n${receiptData.lineItems.map((item: any) => `• ${item.description} - ${item.subtotal} ${receiptData.currency}`).join('\\n')}` : ''}\n\n${receiptData.splits.length > 0 ? `**Splits:**\n${receiptData.splits.map((split: any) => `• ${split.person} - ${split.amount} ${receiptData.currency}`).join('\\n')}` : ''}\n\n${receiptData.unclearFields.length > 0 ? `**Unclear Fields:** ${receiptData.unclearFields.join(', ')}` : ''}`;
+
+      // If there are unclear fields (except paymentMethod), show a follow-up message
+      if (receiptData.unclearFields && receiptData.unclearFields.length > 0) {
+        const followUpMsg = isArabic
+          ? `❓ بعض الحقول غير واضحة: ${receiptData.unclearFields.join(', ')}. يرجى التوضيح.`
+          : `❓ Some fields are unclear: ${receiptData.unclearFields.join(', ')}. Please clarify.`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 2).toString(),
+            content: followUpMsg,
+            sender: "assistant",
+            timestamp: new Date(),
+            type: "error",
+          },
+        ]);
+      }
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: formattedContent,
+        sender: "assistant",
+        timestamp: new Date(),
+        type: "text",
+        suggestions: isArabic 
+          ? ["نعم، احفظ هذه المعاملة", "لا، إلغاء"]
+          : ["Yes, save this transaction", "No, cancel"],
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // Store receipt data for confirmation
+      (window as WindowWithSpeechRecognition).pendingReceiptData = receiptData;
+      // No receiptSaveMode logic
+    } catch (error) {
+      console.error("Error processing receipt:", error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `❌ Error processing receipt: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }. Please try again or upload a clearer image.`,
+        sender: "assistant",
+        timestamp: new Date(),
+        type: "error",
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleFileUpload = async (
@@ -782,6 +915,90 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     }
   };
 
+  // Add handler for save mode selection
+  // Remove receiptSaveMode state and related logic
+
+  const handleReceiptConfirmation = async (confirm: boolean) => {
+    const windowWithSpeech = window as WindowWithSpeechRecognition;
+    const pendingReceipt = windowWithSpeech.pendingReceiptData;
+    if (!pendingReceipt) return;
+
+    if (!confirm) {
+      // Determine language for cancel message
+      const isArabic = pendingReceipt.detectedLanguage === "ar";
+      const cancelContent = isArabic
+        ? "❌ تم إلغاء معاملة الإيصال."
+        : "❌ Receipt transaction cancelled.";
+      
+      const cancelMessage: Message = {
+        id: Date.now().toString(),
+        content: cancelContent,
+        sender: "assistant",
+        timestamp: new Date(),
+        type: "text",
+      };
+      setMessages((prev) => [...prev, cancelMessage]);
+      delete windowWithSpeech.pendingReceiptData;
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Always save as a single total transaction
+      const transaction = {
+        date: new Date(pendingReceipt.date),
+        amount: pendingReceipt.total,
+        currency: pendingReceipt.currency,
+        vendor: pendingReceipt.merchant,
+        description: `Receipt: ${pendingReceipt.merchant}`,
+        category: pendingReceipt.lineItems[0]?.category || "Other",
+        type: "expense" as const,
+        originalAmount: pendingReceipt.total,
+        originalCurrency: pendingReceipt.currency,
+        convertedAmount: pendingReceipt.convertedTotal,
+        convertedCurrency: "USD",
+        conversionRate: pendingReceipt.exchangeRate
+      };
+      await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(transaction),
+      });
+      // Determine language for success message
+      const isArabic = pendingReceipt.detectedLanguage === "ar";
+      const successContent = isArabic
+        ? `✅ تم حفظ المعاملة بنجاح! **${pendingReceipt.total} ${pendingReceipt.currency}** تم إنفاقها في ${pendingReceipt.merchant}.`
+        : `✅ Transaction saved successfully! **${pendingReceipt.total} ${pendingReceipt.currency}** spent at ${pendingReceipt.merchant}.`;
+      
+      const successMessage: Message = {
+        id: Date.now().toString(),
+        content: successContent,
+        sender: "assistant",
+        timestamp: new Date(),
+        type: "text",
+      };
+      setMessages((prev) => [...prev, successMessage]);
+
+      // Clean up
+      delete windowWithSpeech.pendingReceiptData;
+    } catch (error) {
+      console.error("Error saving receipt transaction:", error);
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        content: `❌ Error saving transaction: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+        sender: "assistant",
+        timestamp: new Date(),
+        type: "error",
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className={cn("flex flex-col h-full", className)}>
       <input
@@ -809,6 +1026,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         setVoiceLang={setVoiceLang}
         onVoiceInput={handleVoiceInput}
         onCSVImport={handleCSVImport}
+        onReceiptUpload={handleReceiptUpload}
+        receiptFileInputRef={receiptFileInputRef}
       />
     </div>
   );
