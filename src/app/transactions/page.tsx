@@ -13,6 +13,7 @@ import { formatCurrency, formatDate, getCategoryEmoji } from '@/lib/utils/format
 import { Plus, Search, Filter, MoreHorizontal, Edit, Trash2, Download, Upload } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { CurrencyInfo } from '@/components/ui/currency-info';
 
 interface Transaction {
   id: string;
@@ -22,6 +23,13 @@ interface Transaction {
   description: string;
   category: string;
   type: 'income' | 'expense';
+  // Multi-currency fields
+  originalAmount?: number;
+  originalCurrency?: string;
+  convertedAmount?: number;
+  convertedCurrency?: string;
+  conversionRate?: number;
+  conversionFee?: number;
 }
 
 const CATEGORIES = [
@@ -47,10 +55,12 @@ export default function Transactions() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-
-  // Form state
+  const [defaultCurrency, setDefaultCurrency] = useState('USD');
+  const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
+  const [isCurrencyLoading, setIsCurrencyLoading] = useState(false);
   const [formData, setFormData] = useState({
     amount: '',
+    currency: 'USD',
     vendor: '',
     description: '',
     category: '',
@@ -58,9 +68,40 @@ export default function Transactions() {
     date: new Date().toISOString().split('T')[0]
   });
 
+  // Fetch supported currencies and user default currency
+  useEffect(() => {
+    const fetchCurrencies = async () => {
+      try {
+        setIsCurrencyLoading(true);
+        const res = await fetch('/api/user-currency');
+        const data = await res.json();
+        setDefaultCurrency(data.defaultCurrency || 'USD');
+        const curRes = await fetch('/api/currencies');
+        const curData = await curRes.json();
+        setSupportedCurrencies(curData.currencies || ['USD']);
+      } catch (e) {
+        setSupportedCurrencies(['USD']);
+      } finally {
+        setIsCurrencyLoading(false);
+      }
+    };
+    fetchCurrencies();
+  }, []);
+
+  const handleCurrencyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newCurrency = e.target.value;
+    setDefaultCurrency(newCurrency);
+    await fetch('/api/user-currency', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultCurrency: newCurrency })
+    });
+    window.location.reload();
+  };
+
   const fetchTransactions = async () => {
     try {
-      const response = await fetch('/api/transactions');
+      const response = await fetch(`/api/transactions?currency=${defaultCurrency}`);
       const data = await response.json();
       
       if (data.success) {
@@ -80,7 +121,7 @@ export default function Transactions() {
 
   useEffect(() => {
     fetchTransactions();
-  }, []);
+  }, [defaultCurrency]);
 
   // Filter transactions based on search and filters
   useEffect(() => {
@@ -110,14 +151,15 @@ export default function Transactions() {
 
   const handleEdit = (transaction: Transaction) => {
     setEditingTransaction(transaction);
-    setFormData({
-      amount: Math.abs(transaction.amount).toString(),
-      vendor: transaction.vendor,
-      description: transaction.description,
-      category: transaction.category,
-      type: transaction.type,
-      date: transaction.date.toISOString().split('T')[0]
-    });
+            setFormData({
+          amount: Math.abs(transaction.amount).toString(),
+          currency: transaction.originalCurrency || 'USD',
+          vendor: transaction.vendor,
+          description: transaction.description,
+          category: transaction.category,
+          type: transaction.type,
+          date: transaction.date.toISOString().split('T')[0]
+        });
     setIsEditDialogOpen(true);
   };
 
@@ -142,6 +184,7 @@ export default function Transactions() {
 
     const transactionData = {
       amount: formData.type === 'expense' ? -Math.abs(Number(formData.amount)) : Math.abs(Number(formData.amount)),
+      currency: formData.currency,
       vendor: formData.vendor,
       description: formData.description,
       category: formData.category,
@@ -166,6 +209,7 @@ export default function Transactions() {
         setEditingTransaction(null);
         setFormData({
           amount: '',
+          currency: 'USD',
           vendor: '',
           description: '',
           category: '',
@@ -180,11 +224,11 @@ export default function Transactions() {
 
   const totalIncome = filteredTransactions
     .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + (t.convertedAmount || t.amount), 0);
   
   const totalExpenses = filteredTransactions
     .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    .reduce((sum, t) => sum + Math.abs(t.convertedAmount || t.amount), 0);
 
   if (isLoading) {
     return (
@@ -243,7 +287,7 @@ export default function Transactions() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {formatCurrency(totalIncome)}
+              {formatCurrency(totalIncome, { currency: defaultCurrency })}
             </div>
           </CardContent>
         </Card>
@@ -254,7 +298,7 @@ export default function Transactions() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {formatCurrency(totalExpenses)}
+              {formatCurrency(totalExpenses, { currency: defaultCurrency })}
             </div>
           </CardContent>
         </Card>
@@ -319,6 +363,7 @@ export default function Transactions() {
                 <TableHead>Category</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right">Original</TableHead>
                 <TableHead className="w-[70px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -344,10 +389,28 @@ export default function Transactions() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <span className={`font-bold ${transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                      {transaction.type === 'income' ? '+' : '-'}
-                      {formatCurrency(Math.abs(transaction.amount))}
-                    </span>
+                    <div className="flex flex-col items-end">
+                      <span className={`font-bold ${transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                        {transaction.type === 'income' ? '+' : '-'}
+                        {formatCurrency(Math.abs(transaction.convertedAmount || transaction.amount), { currency: defaultCurrency })}
+                      </span>
+                      {transaction.convertedCurrency && (
+                        <span className="text-xs text-muted-foreground">
+                          {transaction.convertedCurrency}
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <CurrencyInfo
+                      originalAmount={transaction.originalAmount}
+                      originalCurrency={transaction.originalCurrency}
+                      convertedAmount={transaction.convertedAmount || transaction.amount}
+                      convertedCurrency={transaction.convertedCurrency}
+                      conversionRate={transaction.conversionRate}
+                      conversionFee={transaction.conversionFee}
+                      className="text-right"
+                    />
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -386,6 +449,7 @@ export default function Transactions() {
           setEditingTransaction(null);
           setFormData({
             amount: '',
+            currency: 'USD',
             vendor: '',
             description: '',
             category: '',
@@ -405,7 +469,7 @@ export default function Transactions() {
           </DialogHeader>
           
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="amount">Amount</Label>
                 <Input
@@ -417,6 +481,29 @@ export default function Transactions() {
                   onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
                   required
                 />
+              </div>
+              
+              <div>
+                <Label htmlFor="currency">Currency</Label>
+                <Select value={formData.currency} onValueChange={(value) => 
+                  setFormData(prev => ({ ...prev, currency: value }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="GBP">GBP</SelectItem>
+                    <SelectItem value="JPY">JPY</SelectItem>
+                    <SelectItem value="CAD">CAD</SelectItem>
+                    <SelectItem value="AUD">AUD</SelectItem>
+                    <SelectItem value="CHF">CHF</SelectItem>
+                    <SelectItem value="CNY">CNY</SelectItem>
+                    <SelectItem value="SAR">SAR</SelectItem>
+                    <SelectItem value="AED">AED</SelectItem>
+                    <SelectItem value="YER">YER</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               
               <div>

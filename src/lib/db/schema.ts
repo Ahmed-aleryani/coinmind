@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
-import { Transaction, TransactionInput } from '../types/transaction';
+import { Transaction, TransactionInput, UserSettings } from '../types/transaction';
 import { ChatMessage } from '../types/chat';
+import { convertAmount, getExchangeRate } from '../utils/currency';
 
 const DB_PATH = process.env.DATABASE_URL || './data/finance.db';
 
@@ -18,17 +19,35 @@ export function initDatabase() {
 }
 
 function createTables() {
+  // User settings table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_settings (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      default_currency TEXT NOT NULL DEFAULT 'USD',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Transactions table
   db.exec(`
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
       date TEXT NOT NULL,
       amount REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD',
       vendor TEXT NOT NULL,
       description TEXT NOT NULL,
       category TEXT NOT NULL,
       type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
       receipt_url TEXT,
+      -- Multi-currency fields
+      original_amount REAL,
+      original_currency TEXT,
+      converted_amount REAL,
+      converted_currency TEXT,
+      conversion_rate REAL,
+      conversion_fee REAL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
@@ -84,29 +103,99 @@ export const transactionDb = {
     return result ? deserializeTransaction(result as Record<string, unknown>) : null;
   },
 
-  create: (transaction: TransactionInput) => {
+  create: async (transaction: TransactionInput) => {
     const id = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date().toISOString();
-    
-    const stmt = db.prepare(`
-      INSERT INTO transactions (id, date, amount, vendor, description, category, type, receipt_url, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
 
+    // Backend fallback for currency detection from description
+    if (!transaction.currency && transaction.description) {
+      if (/ريال|ريالات|ر\.س|SAR/i.test(transaction.description)) {
+        transaction.currency = 'SAR';
+      }
+    }
+    // Debug log for transaction input (can be enabled in development)
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('DEBUG TRANSACTION INPUT:', transaction);
+    }
+
+    const userSettings = userSettingsDb.get() || { defaultCurrency: 'USD' };
+    const defaultCurrency = userSettings.defaultCurrency || 'USD';
+    
+
+    
+    // Handle both legacy and new multi-currency formats
+    let originalAmount: number;
+    let originalCurrency: string;
+    let convertedAmount: number;
+    let convertedCurrency: string;
+    let conversionRate: number;
+    let conversionFee: number;
+
+    if (transaction.originalAmount !== undefined && transaction.convertedAmount !== undefined) {
+      // New multi-currency format
+      originalAmount = transaction.originalAmount;
+      originalCurrency = transaction.originalCurrency || defaultCurrency;
+      convertedAmount = transaction.convertedAmount;
+      convertedCurrency = transaction.convertedCurrency || defaultCurrency;
+      conversionRate = transaction.conversionRate || 1;
+      conversionFee = transaction.conversionFee || 0;
+    } else {
+      // Legacy format - convert to multi-currency
+      originalAmount = transaction.amount || 0;
+      originalCurrency = transaction.currency || defaultCurrency;
+      convertedAmount = originalAmount;
+      convertedCurrency = defaultCurrency;
+      conversionRate = 1;
+      conversionFee = 0;
+      
+      // Convert if different currency
+      if (originalCurrency !== defaultCurrency) {
+        try {
+          console.log(`Converting ${originalAmount} ${originalCurrency} to ${defaultCurrency}`);
+          conversionRate = await getExchangeRate(originalCurrency, defaultCurrency);
+          convertedAmount = originalAmount * conversionRate;
+          convertedCurrency = defaultCurrency;
+          console.log(`Conversion result: ${convertedAmount} ${convertedCurrency} (rate: ${conversionRate})`);
+        } catch (error) {
+          console.error('Currency conversion failed:', error);
+          // Keep original values if conversion fails
+          convertedAmount = originalAmount;
+          convertedCurrency = originalCurrency;
+          conversionRate = 1;
+        }
+      } else {
+        console.log(`No conversion needed: ${originalCurrency} = ${defaultCurrency}`);
+      }
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO transactions (id, date, amount, currency, vendor, description, category, type, receipt_url, original_amount, original_currency, converted_amount, converted_currency, conversion_rate, conversion_fee, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
     stmt.run(
       id,
       (transaction.date || new Date()).toISOString(),
-      transaction.amount,
+      convertedAmount, // amount (for backward compatibility, use converted)
+      convertedCurrency, // currency (for backward compatibility, use converted)
       transaction.vendor || 'Unknown',
       transaction.description,
       transaction.category || 'Other',
-      transaction.type || (transaction.amount > 0 ? 'income' : 'expense'),
+      transaction.type || (originalAmount > 0 ? 'income' : 'expense'),
       transaction.receiptUrl || null,
+      originalAmount,
+      originalCurrency,
+      convertedAmount,
+      convertedCurrency,
+      conversionRate,
+      conversionFee,
       now,
       now
     );
-
-    return transactionDb.getById(id);
+    
+    const createdTransaction = transactionDb.getById(id);
+    
+    return createdTransaction;
   },
 
   update: (id: string, updates: Partial<TransactionInput>) => {
@@ -166,7 +255,7 @@ export const transactionDb = {
     return stmt.all(startDate.toISOString(), endDate.toISOString()).map(deserializeTransaction);
   },
 
-  getStats: (startDate?: Date, endDate?: Date) => {
+  getStats: async (startDate?: Date, endDate?: Date) => {
     let whereClause = '';
     const params = [];
 
@@ -176,48 +265,80 @@ export const transactionDb = {
     }
 
     const stmt = db.prepare(`
-      SELECT 
-        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as total_income,
-        SUM(CASE WHEN type = 'expense' THEN ABS(amount) ELSE 0 END) as total_expenses,
-        COUNT(*) as transaction_count,
-        category,
-        SUM(ABS(amount)) as category_total,
-        COUNT(*) as category_count
-      FROM transactions
+      SELECT * FROM transactions
       ${whereClause}
-      GROUP BY category
     `);
+    const transactions = stmt.all(...params).map(deserializeTransaction);
 
-    const results = stmt.all(...params);
-    
-    // Process results to calculate stats
+    const userSettings = userSettingsDb.get() || { defaultCurrency: 'USD' };
+    const defaultCurrency = userSettings.defaultCurrency || 'USD';
+
     let totalIncome = 0;
     let totalExpenses = 0;
     let transactionCount = 0;
     const categoryStats: Array<{ category: string; amount: number; count: number }> = [];
+    const categoryMap: Record<string, { amount: number; count: number }> = {};
 
-    results.forEach((row: any) => {
-      totalIncome += Number(row.total_income) || 0;
-      totalExpenses += Number(row.total_expenses) || 0;
-      transactionCount += Number(row.category_count) || 0;
-      
-      if (row.category) {
-        categoryStats.push({
-          category: row.category,
-          amount: Number(row.category_total) || 0,
-          count: Number(row.category_count) || 0
-        });
+    const uniqueCurrencies = [...new Set(transactions.map(tx => tx.currency))];
+    const exchangeRates: Record<string, number> = {};
+    for (const currency of uniqueCurrencies) {
+      if (currency !== defaultCurrency) {
+        exchangeRates[currency] = await getExchangeRate(currency, defaultCurrency);
       }
-    });
+    }
 
+    for (const tx of transactions) {
+      let amount = tx.amount;
+      if (tx.currency !== defaultCurrency) {
+        const rate = exchangeRates[tx.currency];
+        amount = tx.amount * rate;
+      }
+      if (tx.type === 'income') totalIncome += amount;
+      if (tx.type === 'expense') totalExpenses += Math.abs(amount);
+      transactionCount++;
+      if (!categoryMap[tx.category]) categoryMap[tx.category] = { amount: 0, count: 0 };
+      categoryMap[tx.category].amount += Math.abs(amount);
+      categoryMap[tx.category].count++;
+    }
+    for (const [category, { amount, count }] of Object.entries(categoryMap)) {
+      categoryStats.push({ category, amount, count });
+    }
     return {
       totalIncome,
       totalExpenses,
       netAmount: totalIncome - totalExpenses,
       transactionCount,
       averageTransaction: transactionCount > 0 ? (totalIncome + totalExpenses) / transactionCount : 0,
+      defaultCurrency,
       topCategories: categoryStats.sort((a, b) => b.amount - a.amount).slice(0, 10)
     };
+  }
+};
+
+// User settings operations
+export const userSettingsDb = {
+  get: () => {
+    const stmt = db.prepare('SELECT * FROM user_settings WHERE id = ?');
+    const result = stmt.get('default');
+    return result ? deserializeUserSettings(result as Record<string, unknown>) : null;
+  },
+
+  update: (settings: { defaultCurrency: string }) => {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO user_settings (id, default_currency, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+    `);
+    stmt.run('default', settings.defaultCurrency);
+    return userSettingsDb.get();
+  },
+
+  initialize: () => {
+    const stmt = db.prepare(`
+      INSERT OR IGNORE INTO user_settings (id, default_currency, created_at, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `);
+    stmt.run('default', 'USD');
+    return userSettingsDb.get();
   }
 };
 
@@ -269,11 +390,27 @@ function deserializeTransaction(row: any): Transaction {
     id: row.id,
     date: new Date(row.date),
     amount: Number(row.amount),
+    currency: row.currency || 'USD',
     vendor: row.vendor,
     description: row.description,
     category: row.category,
     type: row.type,
     receiptUrl: row.receipt_url || undefined,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    originalAmount: row.original_amount !== undefined ? Number(row.original_amount) : undefined,
+    originalCurrency: row.original_currency || undefined,
+    convertedAmount: row.converted_amount !== undefined ? Number(row.converted_amount) : undefined,
+    convertedCurrency: row.converted_currency || undefined,
+    conversionRate: row.conversion_rate !== undefined ? Number(row.conversion_rate) : undefined,
+    conversionFee: row.conversion_fee !== undefined ? Number(row.conversion_fee) : undefined
+  };
+}
+
+function deserializeUserSettings(row: any): UserSettings {
+  return {
+    id: row.id,
+    defaultCurrency: row.default_currency,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at)
   };
