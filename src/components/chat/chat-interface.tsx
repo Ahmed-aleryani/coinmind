@@ -737,7 +737,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Store receipt data for confirmation
-      (window as WindowWithSpeechRecognition).pendingReceiptData = receiptData;
+      setPendingReceiptData(receiptData);
       // No receiptSaveMode logic
     } catch (error) {
       console.error("Error processing receipt:", error);
