@@ -113,7 +113,10 @@ export const transactionDb = {
         transaction.currency = 'SAR';
       }
     }
-    console.log('DEBUG TRANSACTION INPUT:', transaction);
+    // Debug log for transaction input (can be enabled in development)
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('DEBUG TRANSACTION INPUT:', transaction);
+    }
 
     const userSettings = userSettingsDb.get() || { defaultCurrency: 'USD' };
     const defaultCurrency = userSettings.defaultCurrency || 'USD';
