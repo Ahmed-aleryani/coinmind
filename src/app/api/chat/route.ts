@@ -473,6 +473,225 @@ function formatCurrencyByCode(amount: number, currencyCode: string): string {
   }
 }
 
+// 1. Add a helper to parse period keywords from the user message
+function parsePeriodFromMessage(message: string): { start: Date, end: Date, label: string } | null {
+  const now = new Date();
+  const lower = message.toLowerCase();
+  // Today
+  if (/today|اليوم|اليوم|hoje|hoy|oggi|сегодня|今天|오늘|आज|bugün|vandaag|dzisiaj|idag|i dag|i dag|tänään/.test(lower)) {
+    return { start: new Date(now.setHours(0,0,0,0)), end: new Date(now.setHours(23,59,59,999)), label: 'today' };
+  }
+  // Yesterday
+  if (/yesterday|أمس|ayer|hier|gestern|вчера|昨天|어제|कल|dün|gisteren|wczoraj|igår|i går|eilen/.test(lower)) {
+    const y = new Date(now);
+    y.setDate(y.getDate() - 1);
+    return { start: new Date(y.setHours(0,0,0,0)), end: new Date(y.setHours(23,59,59,999)), label: 'yesterday' };
+  }
+  // This week
+  if (/this week|هذا الأسبوع|esta semana|cette semaine|diese woche|на этой неделе|本周|이번 주|इस सप्ताह|bu hafta|deze week|w tym tygodniu|denna vecka|denne uken|tällä viikolla/.test(lower)) {
+    const d = new Date(now);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+    const start = new Date(d.setDate(diff));
+    start.setHours(0,0,0,0);
+    const end = new Date(now);
+    end.setHours(23,59,59,999);
+    return { start, end, label: 'this week' };
+  }
+  // Last week
+  if (/last week|الأسبوع الماضي|semana pasada|la semaine dernière|letzte woche|на прошлой неделе|上周|지난주|पिछले सप्ताह|geçen hafta|vorige week|w zeszłym tygodniu|förra veckan|forrige uke|viime viikolla/.test(lower)) {
+    const d = new Date(now);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1) - 7;
+    const start = new Date(d.setDate(diff));
+    start.setHours(0,0,0,0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23,59,59,999);
+    return { start, end, label: 'last week' };
+  }
+  // This month
+  if (/this month|هذا الشهر|este mes|ce mois-ci|diesen monat|в этом месяце|本月|이번 달|इस महीने|bu ay|deze maand|w tym miesiącu|denna månad|denne måneden|tässä kuussa/.test(lower)) {
+    const d = new Date(now.getFullYear(), now.getMonth(), 1);
+    const start = new Date(d.setHours(0,0,0,0));
+    const end = new Date(now);
+    end.setHours(23,59,59,999);
+    return { start, end, label: 'this month' };
+  }
+  // Last month
+  if (/last month|الشهر الماضي|mes pasado|le mois dernier|letzten monat|в прошлом месяце|上个月|지난달|पिछले महीने|geçen ay|vorige maand|w zeszłym miesiącu|förra månaden|forrige måned|viime kuussa/.test(lower)) {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const start = new Date(d.setHours(0,0,0,0));
+    const end = new Date(now.getFullYear(), now.getMonth(), 0);
+    end.setHours(23,59,59,999);
+    return { start, end, label: 'last month' };
+  }
+  return null;
+}
+
+// Add helper to generate interactive follow-up questions
+function generateFollowUpQuestions(stats: any, statType: 'income' | 'expenses' | 'all', period: string, language: string): string {
+  const lang = language;
+  const periodLabels: Record<string, Record<string, string>> = {
+    en: { today: 'today', yesterday: 'yesterday', 'this week': 'this week', 'last week': 'last week', 'this month': 'this month', 'last month': 'last month' },
+    ar: { today: 'اليوم', yesterday: 'أمس', 'this week': 'هذا الأسبوع', 'last week': 'الأسبوع الماضي', 'this month': 'هذا الشهر', 'last month': 'الشهر الماضي' },
+  };
+  const label = (periodLabels[lang] && periodLabels[lang][period]) || period;
+  
+  if (statType === 'expenses') {
+    if (stats.totalExpenses > 0) {
+      return lang === 'ar' 
+        ? `هل تريد نصائح لتقليل المصروفات؟ أو مساعدة في تخطيط ميزانيتك؟`
+        : `Would you like tips on reducing expenses? Or help planning your budget?`;
+    } else {
+      return lang === 'ar'
+        ? `ممتاز! لم تنفق أي شيء ${label}. هل تريد نصائح للحفاظ على هذا المستوى؟`
+        : `Great! You didn't spend anything ${label}. Would you like tips to maintain this level?`;
+    }
+  } else if (statType === 'income') {
+    if (stats.totalIncome > 0) {
+      return lang === 'ar'
+        ? `دخل جيد ${label}! هل تريد نصائح لزيادة دخلك أو استثمار أموالك؟`
+        : `Good income ${label}! Would you like tips to increase your income or invest your money?`;
+    } else {
+      return lang === 'ar'
+        ? `لا يوجد دخل ${label}. هل تريد نصائح لزيادة دخلك؟`
+        : `No income ${label}. Would you like tips to increase your income?`;
+    }
+  } else {
+    // Both income and expenses
+    if (stats.netAmount > 0) {
+      return lang === 'ar'
+        ? `صافي إيجابي ${label}! هل تريد نصائح لاستثمار الفائض أو تخطيط ميزانية أفضل؟`
+        : `Positive net ${label}! Would you like tips to invest the surplus or plan a better budget?`;
+    } else if (stats.netAmount < 0) {
+      return lang === 'ar'
+        ? `صافي سلبي ${label}. هل تريد نصائح لتقليل المصروفات أو زيادة الدخل؟`
+        : `Negative net ${label}. Would you like tips to reduce expenses or increase income?`;
+    } else {
+      return lang === 'ar'
+        ? `متوازن ${label}. هل تريد نصائح لتحسين وضعك المالي؟`
+        : `Balanced ${label}. Would you like tips to improve your financial situation?`;
+    }
+  }
+}
+
+// Add helper to detect financial advice questions
+function isFinancialAdviceQuestion(message: string): boolean {
+  const lower = message.toLowerCase();
+  const adviceKeywords = [
+    'how to', 'how can i', 'what should i', 'tips', 'advice', 'help',
+    'كيف', 'نصائح', 'نصيحة', 'مساعدة', 'ماذا أفعل',
+    'cómo', 'consejos', 'ayuda', 'qué debo',
+    'comment', 'conseils', 'aide', 'que dois-je',
+    'wie', 'tipps', 'hilfe', 'was soll ich',
+    'как', 'советы', 'помощь', 'что мне делать',
+    '如何', '建议', '帮助', '我应该',
+    'どうやって', 'アドバイス', '助けて', '何をすべき',
+    '어떻게', '조언', '도움', '무엇을 해야',
+    'कैसे', 'सलाह', 'मदद', 'मुझे क्या करना चाहिए',
+    'nasıl', 'ipuçları', 'yardım', 'ne yapmalıyım',
+    'hoe', 'tips', 'hulp', 'wat moet ik',
+    'jak', 'wskazówki', 'pomoc', 'co powinienem',
+    'hur', 'tips', 'hjälp', 'vad ska jag',
+    'hvordan', 'tips', 'hjælp', 'hvad skal jeg',
+    'hvordan', 'tips', 'hjelp', 'hva skal jeg',
+    'miten', 'vinkkejä', 'apua', 'mitä minun pitäisi'
+  ];
+  return adviceKeywords.some(keyword => lower.includes(keyword));
+}
+
+// Add helper to generate financial advice
+function generateFinancialAdvice(stats: any, question: string, language: string): string {
+  const lower = question.toLowerCase();
+  const lang = language;
+  
+  // Expense reduction advice
+  if (/reduce|decrease|lower|cut|spend less|expense|expenses|spending|cost|costs|spent|spend|أنفق|مصروف|مصروفات|تقليل|خفض|إنفاق|تكلفة|gastar|gasto|gastos|reducir|disminuir|dépenser|dépense|réduire|diminuer|ausgeben|ausgabe|reduzieren|verringern|тратить|расход|сократить|уменьшить|花|支出|减少|降低|使う|支出|減らす|削減|쓰다|지출|줄이다|감소|खर्च|कम|घटानا|harcama|azaltmak|verminderen|uitgeven|verlagen|wydać|wydatek|zmniejszyć|spendera|utgift|minska|bruge|udgift|reducere|bruke|utgift|redusere|kuluttaa|meno|vähentää/.test(lower)) {
+    const tips = lang === 'ar' ? [
+      'راجع مصروفاتك غير الضرورية',
+      'خطط ميزانيتك مسبقاً',
+      'ابحث عن عروض أفضل',
+      'استخدم قسائم الخصم',
+      'طبخ الطعام في البيت بدلاً من المطاعم'
+    ] : [
+      'Review your non-essential expenses',
+      'Plan your budget in advance',
+      'Look for better deals',
+      'Use discount coupons',
+      'Cook at home instead of eating out'
+    ];
+    return lang === 'ar' 
+      ? `نصائح لتقليل المصروفات:\n${tips.map(tip => `• ${tip}`).join('\n')}\n\nهل تريد المزيد من النصائح؟`
+      : `Tips to reduce expenses:\n${tips.map(tip => `• ${tip}`).join('\n')}\n\nWould you like more tips?`;
+  }
+  
+  // Income increase advice
+  if (/increase|earn more|income|salary|make more|كسب|دخل|راتب|زيادة|aumentar|ingreso|salario|ganar|augmenter|revenu|salaire|gagner|erhöhen|einkommen|gehalt|verdienen|увеличить|доход|зарплата|заработать|增加|收入|工资|赚更多|増加|収入|給料|稼ぐ|증가|수입|급여|더 벌다|बढ़ाना|आय|वेतन|कमाना|artırmak|gelir|maaş|kazanmak|verhogen|inkomen|salaris|verdienen|zwiększyć|dochód|pensja|zarabiać|öka|inkomst|lön|tjäna|øge|indkomst|løn|tjene|øke|inntekt|lønn|tjene|lisätä|tulot|palkka|ansaita/.test(lower)) {
+    const tips = lang === 'ar' ? [
+      'ابحث عن عمل إضافي',
+      'طور مهاراتك',
+      'ابدأ مشروعاً جانبياً',
+      'استثمر في تعليمك',
+      'فاوض على راتب أفضل'
+    ] : [
+      'Look for side jobs',
+      'Develop your skills',
+      'Start a side project',
+      'Invest in your education',
+      'Negotiate for better salary'
+    ];
+    return lang === 'ar'
+      ? `نصائح لزيادة الدخل:\n${tips.map(tip => `• ${tip}`).join('\n')}\n\nهل تريد المزيد من النصائح؟`
+      : `Tips to increase income:\n${tips.map(tip => `• ${tip}`).join('\n')}\n\nWould you like more tips?`;
+  }
+  
+  // Budget planning advice
+  if (/budget|planning|plan|ميزانية|تخطيط|planificar|presupuesto|plan|budgeter|planification|budgetieren|planung|бюджет|планирование|план|预算|规划|计划|予算|計画|계획|예산|계획|बजट|योजना|planlama|bütçe|plan|budgetteren|planning|budgetera|planering|budgetere|planlægning|budsjettere|planlegging|budjetoida|suunnittelu/.test(lower)) {
+    const tips = lang === 'ar' ? [
+      'قسّم دخلك: 50% للضروريات، 30% للرغبات، 20% للتوفير',
+      'استخدم تطبيقات تتبع الميزانية',
+      'راجع مصروفاتك شهرياً',
+      'حدد أهداف مالية واضحة',
+      'احتفظ بصندوق طوارئ'
+    ] : [
+      'Split your income: 50% needs, 30% wants, 20% savings',
+      'Use budget tracking apps',
+      'Review your expenses monthly',
+      'Set clear financial goals',
+      'Keep an emergency fund'
+    ];
+    return lang === 'ar'
+      ? `نصائح لتخطيط الميزانية:\n${tips.map(tip => `• ${tip}`).join('\n')}\n\nهل تريد المزيد من النصائح؟`
+      : `Budget planning tips:\n${tips.map(tip => `• ${tip}`).join('\n')}\n\nWould you like more tips?`;
+  }
+  
+  // Savings advice
+  if (/save|savings|tahweel|توفير|ahorrar|ahorro|épargner|épargne|sparen|ersparnis|экономить|сбережения|节省|储蓄|節約|貯金|저축|절약|बचत|saving|tasarruf|sparen|besparingen|oszczędzać|oszczędności|spara|besparingar|spare|opsparing|spare|oppsparing|säästää|säästöt/.test(lower)) {
+    const tips = lang === 'ar' ? [
+      'ابدأ بالتوفير الصغير',
+      'استخدم قاعدة 20% للتوفير',
+      'أعدل مصروفاتك تلقائياً',
+      'استثمر في أدوات التوفير',
+      'احتفظ بصندوق طوارئ'
+    ] : [
+      'Start with small savings',
+      'Use the 20% savings rule',
+      'Automate your savings',
+      'Invest in savings tools',
+      'Keep an emergency fund'
+    ];
+    return lang === 'ar'
+      ? `نصائح للتوفير:\n${tips.map(tip => `• ${tip}`).join('\n')}\n\nهل تريد المزيد من النصائح؟`
+      : `Savings tips:\n${tips.map(tip => `• ${tip}`).join('\n')}\n\nWould you like more tips?`;
+  }
+  
+  // General financial advice
+  return lang === 'ar'
+    ? `نصائح مالية عامة:\n• تتبع مصروفاتك\n• خطط ميزانيتك\n• وفر 20% من دخلك\n• استثمر في تعليمك\n• احتفظ بصندوق طوارئ\n\nهل تريد نصائح محددة؟`
+    : `General financial tips:\n• Track your expenses\n• Plan your budget\n• Save 20% of your income\n• Invest in your education\n• Keep an emergency fund\n\nWould you like specific tips?`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { message, language } = await request.json();
@@ -646,7 +865,8 @@ export async function POST(request: NextRequest) {
             const symbols: Record<string, string> = {
               USD: '$', EUR: '€', GBP: '£', JPY: '¥', SAR: 'ر.س', EGP: '£', AED: 'د.إ', KWD: 'د.ك', BHD: 'ب.د', JOD: 'د.ا',
               CNY: '¥', KRW: '₩', INR: '₹', RUB: '₽', TRY: '₺', PLN: 'zł', SEK: 'kr', NOK: 'kr', DKK: 'kr',
-              MAD: 'د.م', DZD: 'دج', TND: 'د.ت', QAR: 'ر.ق', LBP: 'ل.ل'
+              MAD: 'د.م', DZD: 'دج', TND: 'د.ت', QAR: 'ر.ق', LBP: 'ل.ل',
+              YER: 'ر.ي', // Yemeni Rial
             };
             return symbols[code] || code;
           }
@@ -740,6 +960,83 @@ export async function POST(request: NextRequest) {
         logger.info({ responseLength: responseText.length, detectedLanguage: detectedLanguage.code }, 'Chat response generated successfully');
       }
 
+      // Check for period-based stats question
+      const period = parsePeriodFromMessage(message);
+      if (period) {
+        // Determine if the question is about income, expenses, or both
+        const lowerMsg = message.toLowerCase();
+        // Stricter mutually exclusive detection
+        const expenseRegex = /\b(expense|spent|أنفقت|مصروف|مصروفات|gasto|dépense|ausgabe|расход|支出|지출|خَرَجَ|harcama|uitgave|wydatek|utgift|meno)\b/;
+        const incomeRegex = /\b(income|earned|received|دخل|كسبت|استلمت|ingreso|revenu|einkommen|доход|收入|수입|gelir|inkomen|dochód|inkomst|inntekt|tulot)\b/;
+        let statType: 'income' | 'expenses' | 'all' = 'all';
+        if (expenseRegex.test(lowerMsg) && !incomeRegex.test(lowerMsg)) statType = 'expenses';
+        else if (incomeRegex.test(lowerMsg) && !expenseRegex.test(lowerMsg)) statType = 'income';
+        // Query stats from DB
+        const stats = await transactionDb.getStats(period.start, period.end);
+        // Format response
+        const getCurrencySymbol = (code: string) => ({ USD: '$', EUR: '€', GBP: '£', JPY: '¥', SAR: 'ر.س', EGP: '£', AED: 'د.إ', KWD: 'د.ك', BHD: 'ب.د', JOD: 'د.ا', CNY: '¥', KRW: '₩', INR: '₹', RUB: '₽', TRY: '₺', PLN: 'zł', SEK: 'kr', NOK: 'kr', DKK: 'kr', MAD: 'د.م', DZD: 'دج', TND: 'د.ت', QAR: 'ر.ق', LBP: 'ل.ل', YER: 'ر.ي' }[code] || code);
+        const formatNumberEn = (num: number) => num.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+        const currency = stats.defaultCurrency;
+        let answer = '';
+        if (statType === 'income') {
+          answer = `${formatNumberEn(stats.totalIncome)}${getCurrencySymbol(currency)}`;
+        } else if (statType === 'expenses') {
+          answer = `${formatNumberEn(stats.totalExpenses)}${getCurrencySymbol(currency)}`;
+        } else {
+          answer = `Income: ${formatNumberEn(stats.totalIncome)}${getCurrencySymbol(currency)}, Expenses: ${formatNumberEn(stats.totalExpenses)}${getCurrencySymbol(currency)}, Net: ${formatNumberEn(stats.netAmount)}${getCurrencySymbol(currency)}`;
+        }
+        // Localize response
+        const periodLabels: Record<string, Record<string, string>> = {
+          en: { today: 'today', yesterday: 'yesterday', 'this week': 'this week', 'last week': 'last week', 'this month': 'this month', 'last month': 'last month' },
+          ar: { today: 'اليوم', yesterday: 'أمس', 'this week': 'هذا الأسبوع', 'last week': 'الأسبوع الماضي', 'this month': 'هذا الشهر', 'last month': 'الشهر الماضي' },
+          // Add more as needed
+        };
+        const lang = detectedLanguage.code;
+        const label = (periodLabels[lang] && periodLabels[lang][period.label]) || period.label;
+        let responseText = '';
+        if (statType === 'income') {
+          // Only show income, bold the amount+currency, keep language order
+          if (lang === 'ar') {
+            responseText = `الدخل ${label}: **${answer}**`;
+          } else {
+            responseText = `Income ${label}: **${answer}**`;
+          }
+        } else if (statType === 'expenses') {
+          // Only show expenses, bold the amount+currency, keep language order
+          if (lang === 'ar') {
+            responseText = `المصروفات ${label}: **${answer}**`;
+          } else {
+            responseText = `Expenses ${label}: **${answer}**`;
+          }
+        } else {
+          // Show all (income, expenses, net)
+          if (lang === 'ar') {
+            responseText = `الدخل: **${formatNumberEn(stats.totalIncome)}${getCurrencySymbol(currency)}**, المصروفات: **${formatNumberEn(stats.totalExpenses)}${getCurrencySymbol(currency)}**, الصافي: **${formatNumberEn(stats.netAmount)}${getCurrencySymbol(currency)}** (${label})`;
+          } else {
+            responseText = `Income: **${formatNumberEn(stats.totalIncome)}${getCurrencySymbol(currency)}**, Expenses: **${formatNumberEn(stats.totalExpenses)}${getCurrencySymbol(currency)}**, Net: **${formatNumberEn(stats.netAmount)}${getCurrencySymbol(currency)}** (${label})`;
+          }
+        }
+        // Add interactive follow-up question
+        const followUp = generateFollowUpQuestions(stats, statType, period.label, lang);
+        responseText += `\n\n${followUp}`;
+        return NextResponse.json({ success: true, data: { message: responseText, detectedLanguage: lang, isRTL: detectedLanguage.isRTL, transactionAdded: false } });
+      }
+
+      // Check for financial advice questions
+      if (isFinancialAdviceQuestion(message)) {
+        const stats = await transactionDb.getStats();
+        const advice = generateFinancialAdvice(stats, message, detectedLanguage.code);
+        return NextResponse.json({ 
+          success: true, 
+          data: { 
+            message: advice, 
+            detectedLanguage: detectedLanguage.code, 
+            isRTL: detectedLanguage.isRTL, 
+            transactionAdded: false 
+          } 
+        });
+      }
+
       return NextResponse.json({ 
         success: true,
         data: {
@@ -819,7 +1116,12 @@ function extractTransactionFromMessage(message: string, languageCode: string): {
   // Extract amount using currency patterns
   const currencyPatterns: Record<string, RegExp[]> = {
     en: [/\$([0-9,]+\.?[0-9]*)/, /([0-9,]+\.?[0-9]*)\s*dollars?/i],
-    ar: [/ر\.س\s*([0-9,]+\.?[0-9]*)/, /([0-9,]+\.?[0-9]*)\s*ريال/],
+    ar: [
+      /ر\.س\s*([0-9,]+\.?[0-9]*)/, // SAR
+      /([0-9,]+\.?[0-9]*)\s*ريال/, // SAR generic
+      /ر\.ي\s*([0-9,]+\.?[0-9]*)/, // Rial Yemeni symbol
+      /([0-9,]+\.?[0-9]*)\s*ريال يمني/, // Rial Yemeni Arabic
+    ],
     es: [/€([0-9,]+\.?[0-9]*)/, /([0-9,]+\.?[0-9]*)\s*euros?/i],
     fr: [/€([0-9,]+\.?[0-9]*)/, /([0-9,]+\.?[0-9]*)\s*euros?/i],
     de: [/€([0-9,]+\.?[0-9]*)/, /([0-9,]+\.?[0-9]*)\s*euros?/i],
