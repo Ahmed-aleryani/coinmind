@@ -24,38 +24,8 @@ interface ChatInterfaceProps {
   className?: string;
 }
 
-// Simple language detection function
-function detectLanguage(text: string): string {
-  // Check for Arabic characters
-  const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
-  if (arabicRegex.test(text)) {
-    return 'ar';
-  }
-  
-  // Check for other common languages
-  const chineseRegex = /[\u4E00-\u9FFF]/;
-  if (chineseRegex.test(text)) {
-    return 'zh';
-  }
-  
-  const japaneseRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/;
-  if (japaneseRegex.test(text)) {
-    return 'ja';
-  }
-  
-  const koreanRegex = /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/;
-  if (koreanRegex.test(text)) {
-    return 'ko';
-  }
-  
-  const hindiRegex = /[\u0900-\u097F]/;
-  if (hindiRegex.test(text)) {
-    return 'hi';
-  }
-  
-  // Default to English
-  return 'en';
-}
+// Import shared language detection utility
+import { detectLanguage } from "@/utils/language-detection";
 
 // Get placeholder text based on detected language
 function getPlaceholderText(input: string): string {
