@@ -88,6 +88,38 @@ export interface ReceiptData {
   }>;
 }
 
+export interface ReceiptLineItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  category: TransactionCategory;
+}
+
+export interface ReceiptSplit {
+  person: string;
+  amount: number;
+}
+
+export interface ProcessedReceipt {
+  receiptId: string;
+  merchant: string;
+  date: string;
+  paymentMethod: string;
+  currency: string;
+  total: number;
+  tax: number;
+  tip: number;
+  lineItems: ReceiptLineItem[];
+  splits: ReceiptSplit[];
+  convertedTotal: number;
+  exchangeRate: number;
+  confidence: number;
+  unclearFields: string[];
+  detectedLanguage: string;
+  userMessage: string;
+}
+
 export interface CSVTransaction {
   date: string;
   description: string;
