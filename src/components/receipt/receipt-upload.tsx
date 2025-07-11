@@ -29,7 +29,11 @@ export function ReceiptUpload() {
 
     // Create preview URL for images
     if (file.type.startsWith("image/")) {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
       const url = URL.createObjectURL(file);
+      previewUrlRef.current = url;
       setPreviewUrl(url);
     }
 
