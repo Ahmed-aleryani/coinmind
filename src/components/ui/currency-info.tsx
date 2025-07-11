@@ -21,7 +21,7 @@ export function CurrencyInfo({
   className = ''
 }: CurrencyInfoProps) {
   // If no conversion happened, don't show anything
-  if (!originalAmount || !convertedAmount || originalAmount === convertedAmount) {
+  if (originalAmount == null || convertedAmount == null || originalAmount === convertedAmount) {
     return null;
   }
 
