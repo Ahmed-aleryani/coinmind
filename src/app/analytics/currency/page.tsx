@@ -1,45 +1,67 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { formatCurrency } from '@/lib/utils/formatters';
-import { 
-  getCurrencyConversionHistory, 
-  getCurrencyPairs, 
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { formatCurrency } from "@/lib/utils/formatters";
+import { TransactionCategory, TransactionType } from "@/lib/types/transaction";
+import {
+  getCurrencyConversionHistory,
+  getCurrencyPairs,
   generateExchangeRateData,
   getConversionStats,
   getConversionTrends,
   getCurrencyExposure,
   getConversionEfficiency,
   type CurrencyConversionHistory,
-  type CurrencyPair
-} from '@/lib/utils/currency-history';
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  BarChart, 
+  type CurrencyPair,
+} from "@/lib/utils/currency-history";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
   Bar,
   PieChart,
   Pie,
-  Cell
-} from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, BarChart3, PieChart as PieChartIcon } from 'lucide-react';
+  Cell,
+} from "recharts";
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  BarChart3,
+  PieChart as PieChartIcon,
+} from "lucide-react";
 
-interface Transaction {
+interface ApiTransaction {
   id: string;
-  date: Date;
+  date: string;
   amount: number;
+  currency?: string;
   vendor: string;
   description: string;
-  category: string;
-  type: 'income' | 'expense';
+  category?: string;
+  type?: string;
+  createdAt?: string;
+  updatedAt?: string;
   originalAmount?: number;
   originalCurrency?: string;
   convertedAmount?: number;
@@ -48,42 +70,77 @@ interface Transaction {
   conversionFee?: number;
 }
 
-const CHART_COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1', '#d084d0'];
+interface Transaction {
+  id: string;
+  date: Date;
+  amount: number;
+  currency: string;
+  vendor: string;
+  description: string;
+  category: TransactionCategory;
+  type: TransactionType;
+  createdAt: Date;
+  updatedAt: Date;
+  originalAmount?: number;
+  originalCurrency?: string;
+  convertedAmount?: number;
+  convertedCurrency?: string;
+  conversionRate?: number;
+  conversionFee?: number;
+}
+
+const CHART_COLORS = [
+  "#8884d8",
+  "#82ca9d",
+  "#ffc658",
+  "#ff7c7c",
+  "#8dd1e1",
+  "#d084d0",
+];
 
 export default function CurrencyAnalyticsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [conversionHistory, setConversionHistory] = useState<CurrencyConversionHistory[]>([]);
+  const [conversionHistory, setConversionHistory] = useState<
+    CurrencyConversionHistory[]
+  >([]);
   const [currencyPairs, setCurrencyPairs] = useState<CurrencyPair[]>([]);
-  const [selectedPair, setSelectedPair] = useState<string>('');
+  const [selectedPair, setSelectedPair] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('/api/transactions');
+        const response = await fetch("/api/transactions");
         const data = await response.json();
-        
+
         if (data.success) {
-          const parsedTransactions = data.data.map((t: any) => ({
-            ...t,
-            date: new Date(t.date)
-          }));
+          const parsedTransactions: Transaction[] = data.data.map(
+            (t: ApiTransaction) => ({
+              ...t,
+              date: new Date(t.date),
+              createdAt: new Date(t.createdAt || t.date),
+              updatedAt: new Date(t.updatedAt || t.date),
+              currency: t.currency || "USD",
+              category: (t.category as TransactionCategory) || "Other",
+              type: (t.type as TransactionType) || "expense",
+            })
+          );
           setTransactions(parsedTransactions);
-          
+
           // Generate conversion history
           const history = getCurrencyConversionHistory(parsedTransactions);
           setConversionHistory(history);
-          
+
           // Get currency pairs
           const pairs = getCurrencyPairs(history);
           setCurrencyPairs(pairs);
-          
+
           if (pairs.length > 0) {
             setSelectedPair(pairs[0].label);
           }
         }
       } catch (error) {
-        console.error('Error fetching analytics data:', error);
+        console.error("Error fetching analytics data:", error);
       } finally {
         setIsLoading(false);
       }
@@ -97,9 +154,14 @@ export default function CurrencyAnalyticsPage() {
   const currencyExposure = getCurrencyExposure(transactions);
   const conversionEfficiency = getConversionEfficiency(conversionHistory);
 
-  const selectedPairData = currencyPairs.find(p => p.label === selectedPair);
-  const exchangeRateData = selectedPairData 
-    ? generateExchangeRateData(conversionHistory, selectedPairData.from, selectedPairData.to, 30)
+  const selectedPairData = currencyPairs.find((p) => p.label === selectedPair);
+  const exchangeRateData = selectedPairData
+    ? generateExchangeRateData(
+        conversionHistory,
+        selectedPairData.from,
+        selectedPairData.to,
+        30
+      )
     : [];
 
   if (isLoading) {
@@ -127,7 +189,9 @@ export default function CurrencyAnalyticsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Conversions</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Total Conversions
+            </CardTitle>
             <BarChart3 className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
@@ -149,9 +213,7 @@ export default function CurrencyAnalyticsPage() {
             <div className="text-2xl font-bold text-green-600">
               {formatCurrency(conversionStats.totalVolume)}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Converted amount
-            </p>
+            <p className="text-xs text-muted-foreground">Converted amount</p>
           </CardContent>
         </Card>
 
@@ -179,9 +241,7 @@ export default function CurrencyAnalyticsPage() {
             <div className="text-2xl font-bold text-orange-600">
               {conversionEfficiency.efficiency}%
             </div>
-            <p className="text-xs text-muted-foreground">
-              Rate efficiency
-            </p>
+            <p className="text-xs text-muted-foreground">Rate efficiency</p>
           </CardContent>
         </Card>
       </div>
@@ -205,7 +265,7 @@ export default function CurrencyAnalyticsPage() {
                   <SelectValue placeholder="Select currency pair" />
                 </SelectTrigger>
                 <SelectContent>
-                  {currencyPairs.map(pair => (
+                  {currencyPairs.map((pair) => (
                     <SelectItem key={pair.label} value={pair.label}>
                       {pair.label}
                     </SelectItem>
@@ -213,20 +273,20 @@ export default function CurrencyAnalyticsPage() {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={exchangeRateData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
                 <YAxis />
-                <Tooltip 
-                  formatter={(value: number) => [value.toFixed(4), 'Rate']}
+                <Tooltip
+                  formatter={(value: number) => [value.toFixed(4), "Rate"]}
                   labelFormatter={(label) => `Date: ${label}`}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="rate" 
-                  stroke="#8884d8" 
+                <Line
+                  type="monotone"
+                  dataKey="rate"
+                  stroke="#8884d8"
                   strokeWidth={2}
                   name="Exchange Rate"
                 />
@@ -255,14 +315,24 @@ export default function CurrencyAnalyticsPage() {
                 <XAxis dataKey="date" />
                 <YAxis yAxisId="left" />
                 <YAxis yAxisId="right" orientation="right" />
-                <Tooltip 
+                <Tooltip
                   formatter={(value: number, name: string) => [
-                    name === 'conversions' ? value : formatCurrency(value),
-                    name === 'conversions' ? 'Conversions' : 'Volume'
+                    name === "conversions" ? value : formatCurrency(value),
+                    name === "conversions" ? "Conversions" : "Volume",
                   ]}
                 />
-                <Bar yAxisId="left" dataKey="conversions" fill="#8884d8" name="Conversions" />
-                <Bar yAxisId="right" dataKey="volume" fill="#82ca9d" name="Volume" />
+                <Bar
+                  yAxisId="left"
+                  dataKey="conversions"
+                  fill="#8884d8"
+                  name="Conversions"
+                />
+                <Bar
+                  yAxisId="right"
+                  dataKey="volume"
+                  fill="#82ca9d"
+                  name="Volume"
+                />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -290,41 +360,66 @@ export default function CurrencyAnalyticsPage() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ currency, amount }) => `${currency}: ${formatCurrency(Math.abs(amount))}`}
+                    label={({ currency, amount }) =>
+                      `${currency}: ${formatCurrency(Math.abs(amount))}`
+                    }
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="amount"
                   >
                     {currencyExposure.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={CHART_COLORS[index % CHART_COLORS.length]}
+                      />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number) => [formatCurrency(Math.abs(value)), 'Amount']} />
+                  <Tooltip
+                    formatter={(value: number) => [
+                      formatCurrency(Math.abs(value)),
+                      "Amount",
+                    ]}
+                  />
                 </PieChart>
               </ResponsiveContainer>
-              
+
               <div className="space-y-4">
                 <h3 className="font-semibold">Currency Breakdown</h3>
                 {currencyExposure.map((exposure, index) => (
-                  <div key={exposure.currency} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div
+                    key={exposure.currency}
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                  >
                     <div className="flex items-center gap-3">
-                      <div 
+                      <div
                         className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                        style={{
+                          backgroundColor:
+                            CHART_COLORS[index % CHART_COLORS.length],
+                        }}
                       />
                       <div>
                         <div className="font-medium">{exposure.currency}</div>
                         <div className="text-sm text-muted-foreground">
-                          {exposure.amount > 0 ? 'Positive' : 'Negative'} exposure
+                          {exposure.amount > 0 ? "Positive" : "Negative"}{" "}
+                          exposure
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className={`font-semibold ${exposure.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <div
+                        className={`font-semibold ${
+                          exposure.amount > 0
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
                         {formatCurrency(Math.abs(exposure.amount))}
                       </div>
-                      <Badge variant={exposure.amount > 0 ? 'default' : 'secondary'}>
-                        {exposure.amount > 0 ? 'Asset' : 'Liability'}
+                      <Badge
+                        variant={exposure.amount > 0 ? "default" : "secondary"}
+                      >
+                        {exposure.amount > 0 ? "Asset" : "Liability"}
                       </Badge>
                     </div>
                   </div>
@@ -367,28 +462,36 @@ export default function CurrencyAnalyticsPage() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="space-y-4">
                 <h3 className="font-semibold">Rate Analysis</h3>
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span>Best Rate:</span>
-                    <span className="font-medium">{conversionStats.bestRate.toFixed(4)}</span>
+                    <span className="font-medium">
+                      {conversionStats.bestRate.toFixed(4)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>Worst Rate:</span>
-                    <span className="font-medium">{conversionStats.worstRate.toFixed(4)}</span>
+                    <span className="font-medium">
+                      {conversionStats.worstRate.toFixed(4)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>Average Rate:</span>
-                    <span className="font-medium">{conversionStats.averageRate.toFixed(4)}</span>
+                    <span className="font-medium">
+                      {conversionStats.averageRate.toFixed(4)}
+                    </span>
                   </div>
                 </div>
-                
+
                 {conversionStats.mostActivePair && (
                   <div className="mt-4 p-3 bg-muted rounded-lg">
                     <div className="text-sm font-medium">Most Active Pair</div>
-                    <div className="text-lg font-bold">{conversionStats.mostActivePair.pair}</div>
+                    <div className="text-lg font-bold">
+                      {conversionStats.mostActivePair.pair}
+                    </div>
                     <div className="text-sm text-muted-foreground">
                       {conversionStats.mostActivePair.count} conversions
                     </div>
@@ -401,4 +504,4 @@ export default function CurrencyAnalyticsPage() {
       )}
     </div>
   );
-} 
+}

@@ -1,5 +1,5 @@
-import { Badge } from './badge';
-import { formatCurrency } from '@/lib/utils/formatters';
+import { Badge } from "./badge";
+import { formatCurrency } from "@/lib/utils/formatters";
 
 interface CurrencyInfoProps {
   originalAmount?: number;
@@ -18,11 +18,16 @@ export function CurrencyInfo({
   convertedCurrency,
   conversionRate,
   conversionFee,
-  className = ''
+  className = "",
 }: CurrencyInfoProps) {
-  // If no conversion happened, don't show anything
-  if (originalAmount == null || convertedAmount == null || originalAmount === convertedAmount) {
-    return null;
+  // If no conversion happened or no original amount, don't show conversion info
+  if (
+    !originalAmount ||
+    !convertedAmount ||
+    !originalCurrency ||
+    originalAmount === convertedAmount
+  ) {
+    return <div className={className}></div>;
   }
 
   return (
@@ -30,7 +35,9 @@ export function CurrencyInfo({
       <div className="flex items-center gap-1">
         <span>Original:</span>
         <span className="font-medium">
-          {formatCurrency(Math.abs(originalAmount), { currency: originalCurrency || 'USD' })}
+          {formatCurrency(Math.abs(originalAmount), {
+            currency: originalCurrency || "USD",
+          })}
         </span>
         {conversionRate && conversionRate !== 1 && (
           <Badge variant="outline" className="text-xs">
@@ -40,9 +47,12 @@ export function CurrencyInfo({
       </div>
       {conversionFee && conversionFee > 0 && (
         <div className="text-xs text-red-500">
-          Fee: {formatCurrency(conversionFee, { currency: convertedCurrency || 'USD' })}
+          Fee:{" "}
+          {formatCurrency(conversionFee, {
+            currency: convertedCurrency || "USD",
+          })}
         </div>
       )}
     </div>
   );
-} 
+}
