@@ -116,6 +116,8 @@ export interface ProcessedReceipt {
   exchangeRate: number;
   confidence: number;
   unclearFields: string[];
+  detectedLanguage: string;
+  userMessage: string;
 }
 
 export interface CSVTransaction {
