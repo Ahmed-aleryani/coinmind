@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { transactionDb, initDatabase } from "@/lib/db/schema";
-import {
-  detectLanguage,
-} from "@/lib/utils/language-detection";
+
 import { TransactionCategory } from "@/lib/types/transaction";
 import { parseTransactionText, parseCSVWithGemini, answerFinancialQuestion } from "@/lib/api/gemini";
 import logger from "@/lib/utils/logger";
@@ -185,33 +183,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use provided language or detect it
-    let detectedLanguage;
-    if (language && typeof language === "string") {
-      // Use the language provided by frontend
-      detectedLanguage = {
-        code: language,
-        name: language,
-        isRTL: ["ar", "he", "fa", "ur"].includes(language),
-      };
-      logger.info(
-        { detectedLanguage: detectedLanguage.code },
-        "Language provided by frontend"
-      );
-    } else {
-      // Fallback to server-side detection
-      detectedLanguage = detectLanguage(message);
-      logger.info(
-        { detectedLanguage: detectedLanguage.code },
-        "Language detected by server"
-      );
-    }
+    // Let AI handle language detection naturally
+    logger.info("Processing message - AI will detect language automatically");
 
     // Handle CSV import requests
     if (type === "csv_import") {
       try {
         logger.info("Processing CSV import request");
 
+        // Extract file information from request body
+        const { fileInfo, previousFile } = await request.json();
+        
         // Extract spreadsheet data from message
         const csvMatch = message.match(
           /Please analyze and import this spreadsheet file data:\n\n([\s\S]*)/
@@ -230,6 +212,90 @@ export async function POST(request: NextRequest) {
         const csvText = csvMatch[1];
         logger.info({ csvTextLength: csvText.length, csvTextPreview: csvText.substring(0, 200) }, "Extracted spreadsheet data");
         
+        // Use AI to analyze if this is a duplicate file
+        let duplicateAnalysis = "";
+        if (previousFile) {
+          const duplicatePrompt = `You are a multilingual AI assistant analyzing file uploads. 
+
+Analyze if this file upload is a duplicate:
+
+Current file: ${fileInfo.name} (${fileInfo.size} bytes, modified: ${new Date(fileInfo.lastModified).toISOString()})
+Previous file: ${previousFile.name} (${previousFile.size} bytes, modified: ${new Date(previousFile.lastModified).toISOString()})
+
+Consider:
+1. File names (exact match or similar)
+2. File sizes (identical or very close)
+3. Modification times (same or very close)
+4. File content similarity
+
+**Language Detection & Response:**
+- Analyze the file name and content to determine the user's language preference
+- Respond in the same language as the file name or content
+- Be culturally sensitive and user-friendly
+- Consider the natural language patterns in the file name
+
+**Response Format:**
+- Start with "DUPLICATE:" or "NEW_FILE:" followed by your analysis
+- Provide explanation in the detected language
+- Include specific details about why the file is considered duplicate or different
+
+Analyze and respond naturally in the appropriate language:`;
+
+          try {
+            const duplicateResponse = await model.generateContent(duplicatePrompt);
+            duplicateAnalysis = duplicateResponse.response.text();
+            logger.info({ duplicateAnalysis }, "AI duplicate analysis completed");
+          } catch (error) {
+            logger.warn({ error }, "AI duplicate analysis failed, proceeding with import");
+          }
+        }
+
+        // Check if AI detected a duplicate
+        if (duplicateAnalysis.includes("DUPLICATE")) {
+          // Extract the AI's explanation and use it directly
+          const aiExplanation = duplicateAnalysis.replace(/^DUPLICATE:\s*/i, '').trim();
+          
+          // Let the AI handle the complete response naturally
+          const duplicatePrompt = `You are a multilingual AI assistant. The AI analysis found a duplicate file:
+
+File: ${fileInfo.name} (${fileInfo.size} bytes, type: ${fileInfo.type})
+AI Analysis: ${aiExplanation}
+
+Generate a complete, user-friendly duplicate detection message in the same language as the file name. Include:
+- A clear warning about the duplicate
+- File details
+- Recommendation to select a different file
+
+Respond naturally in the appropriate language based on the file name and AI analysis.`;
+
+          try {
+            const result = await model.generateContent(duplicatePrompt);
+            const response = await result.response;
+            const duplicateMessage = response.text();
+            
+            return NextResponse.json({
+              success: true,
+              data: {
+                message: duplicateMessage,
+                type: "duplicate_detected",
+                isDuplicate: true,
+              },
+            });
+          } catch (error) {
+            // Fallback to simple message if AI fails
+            const fallbackMessage = `⚠️ **Duplicate File Detected**\n\n${aiExplanation}\n\n**File Details:**\n- Name: ${fileInfo.name}\n- Size: ${fileInfo.size} bytes\n- Type: ${fileInfo.type}\n\n**Recommendation:** Please select a different file or wait a moment before uploading the same file again to avoid duplicate transactions.`;
+            
+            return NextResponse.json({
+              success: true,
+              data: {
+                message: fallbackMessage,
+                type: "duplicate_detected",
+                isDuplicate: true,
+              },
+            });
+          }
+        }
+        
         const result = await parseCSVWithGemini(csvText);
 
         // Return preview for user confirmation
@@ -242,6 +308,7 @@ export async function POST(request: NextRequest) {
             type: "csv_preview",
             requiresConfirmation: true,
             suggestions: ["Confirm Import", "Cancel Import"],
+            fileInfo: fileInfo, // Return file info for tracking
           },
         });
       } catch (error) {
@@ -662,7 +729,6 @@ export async function POST(request: NextRequest) {
         logger.info(
           {
             responseLength: responseText.length,
-            detectedLanguage: detectedLanguage.code,
           },
           "Chat response generated successfully"
         );
@@ -683,14 +749,12 @@ export async function POST(request: NextRequest) {
           logger.info({ message: message.substring(0, 100) }, 'Processing financial query with AI function calling');
           
           try {
-            const financialAnswer = await answerFinancialQuestion(message, detectedLanguage.code);
+            const financialAnswer = await answerFinancialQuestion(message, "en");
             
         return NextResponse.json({
           success: true,
           data: {
                 message: financialAnswer,
-                detectedLanguage: detectedLanguage.code,
-            isRTL: detectedLanguage.isRTL,
             transactionAdded: false,
           },
         });
@@ -703,22 +767,37 @@ export async function POST(request: NextRequest) {
             // Fall through to general AI response
           }
         } else if (queryAnalysis.intent === "unknown") {
-          // Handle unknown intent - respond with "unknown" message
-          const unknownMessage = detectedLanguage.code === "ar" 
-            ? "غير معروف - لم أتمكن من فهم ما تريد. هل يمكنك توضيح سؤالك أكثر؟"
-            : detectedLanguage.code === "es"
-            ? "Desconocido - No pude entender lo que quieres. ¿Podrías aclarar tu pregunta?"
-            : "Unknown - I couldn't understand what you're asking for. Could you clarify your question?";
+          // Handle unknown intent - let AI generate appropriate response
+          const unknownPrompt = SYSTEM_PROMPT
+            .replace("{balance}", formattedBalance)
+            .replace("{income}", formattedIncome)
+            .replace("{expenses}", formattedExpenses)
+            .replace("{transactionCount}", transactions.length.toString())
+            .replace("{defaultCurrency}", defaultCurrency) +
+            `\n\nUser message: ${message}\n\nI couldn't understand what the user is asking for. Generate a helpful response asking them to clarify their question. Respond in the same language as the user's message.`;
           
-        return NextResponse.json({
-          success: true,
-          data: {
-              message: unknownMessage,
-            detectedLanguage: detectedLanguage.code,
-            isRTL: detectedLanguage.isRTL,
-            transactionAdded: false,
-          },
-        });
+          try {
+            const result = await model.generateContent(unknownPrompt);
+            const response = await result.response;
+            const unknownMessage = response.text();
+            
+            return NextResponse.json({
+              success: true,
+              data: {
+                message: unknownMessage,
+                transactionAdded: false,
+              },
+            });
+          } catch (error) {
+            // Fallback to simple message
+            return NextResponse.json({
+              success: true,
+              data: {
+                message: "I couldn't understand what you're asking for. Could you clarify your question?",
+                transactionAdded: false,
+              },
+            });
+          }
         }
       }
 
@@ -726,8 +805,6 @@ export async function POST(request: NextRequest) {
         success: true,
         data: {
           message: responseText,
-          detectedLanguage: detectedLanguage.code,
-          isRTL: detectedLanguage.isRTL,
           transactionAdded: transactionAdded,
         },
       });
@@ -738,7 +815,7 @@ export async function POST(request: NextRequest) {
       );
 
       // Fallback response without database data
-      const fallbackPrompt = `You are a smart financial assistant called CoinMind. The user said: "${message}". Please respond in ${detectedLanguage.name} (${detectedLanguage.code}) and be helpful with financial advice.`;
+      const fallbackPrompt = `You are a smart financial assistant called CoinMind. The user said: "${message}". Please respond in the same language as the user's message and be helpful with financial advice.`;
 
       const result = await model.generateContent(fallbackPrompt);
       const response = await result.response;
@@ -748,8 +825,6 @@ export async function POST(request: NextRequest) {
         success: true,
         data: {
           message: text,
-          detectedLanguage: detectedLanguage.code,
-          isRTL: detectedLanguage.isRTL,
         },
       });
     }
