@@ -16,7 +16,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMessageTime } from "@/lib/utils/formatters";
-import { detectLanguage } from "@/lib/utils/language-detection";
+
+import { parseSpreadsheetFile } from "@/lib/utils/parsers";
+
 import TextareaAutosize from "react-textarea-autosize";
 import { Markdown } from "@/components/ui/markdown";
 
@@ -268,7 +270,7 @@ function ChatInput({
               size="icon"
               disabled={isLoading}
               onClick={onCSVImport}
-              title="Import CSV file"
+              title="Import CSV or Excel file"
             >
               <FileSpreadsheet className="h-4 w-4" />
             </Button>
@@ -336,25 +338,10 @@ interface WindowWithSpeechRecognition extends Window {
   pendingReceiptData?: any;
 }
 
-// Get placeholder text based on detected language
+// Get placeholder text - AI will handle language detection naturally
 function getPlaceholderText(input: string): string {
-  const language = detectLanguage(input);
-
-  const placeholders: Record<string, string> = {
-    ar: "اكتب رسالتك... (مثال: دفعت 200 ريال على الطعام)",
-    zh: "输入您的消息... (例如: 我花了100元买食物)",
-    ja: "メッセージを入力... (例: 食料品に1000円使いました)",
-    ko: "메시지를 입력하세요... (예: 식료품에 10000원 썼습니다)",
-    hi: "अपना संदेश लिखें... (उदाहरण: मैंने खाने पर 100 रुपये खर्च किए)",
-    tr: "Mesajınızı yazın... (örnek: yemek için 100 lira harcadım)",
-    es: "Escribe tu mensaje... (ejemplo: gasté 25 euros en comida)",
-    fr: "Écrivez votre message... (exemple: j'ai dépensé 30 euros pour la nourriture)",
-    de: "Schreiben Sie Ihre Nachricht... (Beispiel: ich habe 40 Euro für Lebensmittel ausgegeben)",
-    ru: "Напишите ваше сообщение... (пример: я потратил 3000 рублей на еду)",
-    en: "Type your message... (e.g., 'I spent $50 on groceries')",
-  };
-
-  return placeholders[language.code] || placeholders.en;
+  // Default to English placeholder, AI will respond in user's language
+  return "Type your message... (e.g., 'I spent $50 on groceries')";
 }
 
 export function ChatInterface({ className }: ChatInterfaceProps) {
@@ -381,6 +368,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [voiceLang, setVoiceLang] = useState("en-US"); // Language selector for voice input
+  const [lastUploadedFile, setLastUploadedFile] = useState<{ name: string; size: number; lastModified: number } | null>(null);
+  const [lastUploadedReceipt, setLastUploadedReceipt] = useState<{ name: string; size: number; lastModified: number } | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -475,11 +464,11 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     if (!content.trim() || isLoading) return;
 
     // Handle CSV import confirmations
-    if (content.includes("Yes, import all transactions")) {
+    if (content.includes("Confirm Import")) {
       await handleCSVConfirmation(true);
       return;
     }
-    if (content.includes("No, cancel import")) {
+    if (content.includes("Cancel Import")) {
       await handleCSVConfirmation(false);
       return;
     }
@@ -507,10 +496,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     setIsLoading(true);
 
     try {
-      // Detect language for the message
-      const detectedLanguage = detectLanguage(content.trim());
-      console.log("Detected language:", detectedLanguage);
-
+      // Let AI handle language detection naturally
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -518,7 +504,6 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         },
         body: JSON.stringify({
           message: content.trim(),
-          language: detectedLanguage,
         }),
       });
 
@@ -657,6 +642,13 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     // Reset the input value to allow selecting the same file again
     event.target.value = "";
 
+    // Track receipt info for AI analysis
+    const currentReceipt = {
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified
+    };
+
     // Validate file type
     if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
       const errorMessage: Message = {
@@ -736,8 +728,20 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
       setMessages((prev) => [...prev, assistantMessage]);
 
-      // Store receipt data for confirmation
-      setPendingReceiptData(receiptData);
+              // Store receipt data for confirmation in window object
+        (window as WindowWithSpeechRecognition).pendingReceiptData = receiptData;
+
+        // Track the uploaded receipt to prevent duplicates
+        setLastUploadedReceipt({
+          name: file.name,
+          size: file.size,
+          lastModified: file.lastModified
+        });
+
+        // Clear the tracking after 5 minutes to allow re-upload
+        setTimeout(() => {
+          setLastUploadedReceipt(null);
+        }, 5 * 60 * 1000); // 5 minutes
       // No receiptSaveMode logic
     } catch (error) {
       console.error("Error processing receipt:", error);
@@ -768,11 +772,20 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     // Reset the input value to allow selecting the same file again
     event.target.value = "";
 
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      console.log("File is not a CSV");
+    // Track file info for AI analysis
+    const currentFile = {
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified
+    };
+
+    // Validate file type
+    const fileName = file.name.toLowerCase();
+    if (!fileName.endsWith(".csv") && !fileName.endsWith(".xlsx") && !fileName.endsWith(".xls")) {
+      console.log("File is not a supported spreadsheet format");
       const errorMessage: Message = {
         id: Date.now().toString(),
-        content: "Please select a valid CSV file.",
+        content: "Please select a valid CSV or Excel file (.csv, .xlsx, .xls).",
         sender: "assistant",
         timestamp: new Date(),
         type: "error",
@@ -782,9 +795,10 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     }
 
     // Add user message about the upload
+    const fileType = fileName.endsWith('.csv') ? 'CSV' : 'Excel';
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: `📄 Uploading CSV file: ${file.name}`,
+      content: `📄 Uploading ${fileType} file: ${file.name}`,
       sender: "user",
       timestamp: new Date(),
       type: "text",
@@ -793,18 +807,38 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     setIsLoading(true);
 
     try {
-      // Read CSV file as text
-      const csvText = await file.text();
+      let fileData: string;
+      
+      if (fileName.endsWith('.csv')) {
+        // Read CSV file as text
+        fileData = await file.text();
+      } else {
+        // For Excel files, parse and convert to CSV format
+        const preview = await parseSpreadsheetFile(file);
+        const allData = [preview.headers, ...preview.rows];
+        
+        // Convert to CSV string format
+        fileData = allData.map(row => 
+          row.map(cell => `"${cell || ''}"`).join(',')
+        ).join('\n');
+      }
 
-      // Send CSV data to chat API for processing
+      // Send spreadsheet data to chat API for processing
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: `Please analyze and import this CSV file data:\n\n${csvText}`,
+          message: `Please analyze and import this spreadsheet file data:\n\n${fileData}`,
           type: "csv_import",
+          fileInfo: {
+            name: file.name,
+            size: file.size,
+            lastModified: file.lastModified,
+            type: fileName.endsWith('.csv') ? 'CSV' : 'Excel'
+          },
+          previousFile: lastUploadedFile
         }),
       });
 
@@ -821,22 +855,45 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         };
         setMessages((prev) => [...prev, assistantMessage]);
 
-        // Store CSV data for confirmation if needed
+        // Handle duplicate detection
+        if (data.data.isDuplicate) {
+          // Don't track duplicate files
+          return;
+        }
+
+        // Store spreadsheet data for confirmation if needed
         if (data.data.requiresConfirmation) {
           (window as WindowWithSpeechRecognition).pendingCSVImport = {
-            csvText,
+            csvText: fileData,
           };
+        }
+
+        // Track the uploaded file only if it's not a duplicate
+        if (data.data.fileInfo) {
+          // Detect language from file name
+          const isArabic = /[\u0600-\u06FF]/.test(file.name);
+          // Let AI handle language detection naturally
+          setLastUploadedFile({
+            name: file.name,
+            size: file.size,
+            lastModified: file.lastModified,
+          });
+
+          // Clear the tracking after 5 minutes to allow re-upload
+          setTimeout(() => {
+            setLastUploadedFile(null);
+          }, 5 * 60 * 1000); // 5 minutes
         }
       } else {
         throw new Error(data.error || "Failed to process CSV file");
       }
     } catch (error) {
-      console.error("Error processing CSV:", error);
+      console.error("Error processing spreadsheet:", error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: `❌ Error processing CSV file: ${
+        content: `❌ Error processing spreadsheet file: ${
           error instanceof Error ? error.message : "Unknown error"
-        }. Please make sure your file is a valid CSV.`,
+        }. Please make sure your file is a valid CSV or Excel file.`,
         sender: "assistant",
         timestamp: new Date(),
         type: "error",
@@ -855,7 +912,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     if (!confirm) {
       const cancelMessage: Message = {
         id: Date.now().toString(),
-        content: "❌ CSV import cancelled.",
+        content: "❌ Spreadsheet import cancelled.",
         sender: "assistant",
         timestamp: new Date(),
         type: "text",
@@ -893,7 +950,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         };
         setMessages((prev) => [...prev, assistantMessage]);
       } else {
-        throw new Error(data.error || "Failed to import CSV");
+        throw new Error(data.error || "Failed to import spreadsheet");
       }
 
       // Clean up
@@ -902,7 +959,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       console.error("Error importing CSV:", error);
       const errorMessage: Message = {
         id: Date.now().toString(),
-        content: `❌ Error importing CSV: ${
+        content: `❌ Error importing spreadsheet: ${
           error instanceof Error ? error.message : "Unknown error"
         }`,
         sender: "assistant",
@@ -924,11 +981,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     if (!pendingReceipt) return;
 
     if (!confirm) {
-      // Determine language for cancel message
-      const isArabic = pendingReceipt.detectedLanguage === "ar";
-      const cancelContent = isArabic
-        ? "❌ تم إلغاء معاملة الإيصال."
-        : "❌ Receipt transaction cancelled.";
+      // Let AI handle language detection naturally
+      const cancelContent = "❌ Receipt transaction cancelled.";
       
       const cancelMessage: Message = {
         id: Date.now().toString(),
@@ -965,11 +1019,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(transaction),
       });
-      // Determine language for success message
-      const isArabic = pendingReceipt.detectedLanguage === "ar";
-      const successContent = isArabic
-        ? `✅ تم حفظ المعاملة بنجاح! **${pendingReceipt.total} ${pendingReceipt.currency}** تم إنفاقها في ${pendingReceipt.merchant}.`
-        : `✅ Transaction saved successfully! **${pendingReceipt.total} ${pendingReceipt.currency}** spent at ${pendingReceipt.merchant}.`;
+      // Let AI handle language detection naturally
+      const successContent = `✅ Transaction saved successfully! **${pendingReceipt.total} ${pendingReceipt.currency}** spent at ${pendingReceipt.merchant}.`;
       
       const successMessage: Message = {
         id: Date.now().toString(),
@@ -1005,7 +1056,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         type="file"
         ref={fileInputRef}
         onChange={handleFileUpload}
-        accept=".csv"
+        accept=".csv,.xlsx,.xls"
         style={{ display: "none" }}
       />
       <MessageList
