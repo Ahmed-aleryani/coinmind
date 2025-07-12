@@ -39,29 +39,18 @@ export async function GET(request: NextRequest) {
         ratesObj = await getGlobalRates('USD');
       } catch (e) {
         logger.warn({ requestId, error: e instanceof Error ? e.message : e }, 'Global rates fetch failed, falling back to batch conversion');
-        // Fallback to previous batch method
-        const { batchConvertAmounts } = await import('@/lib/utils/currency');
-        const items = transactions.map((t: any) => ({
-          amount: t.originalAmount || t.amount,
-          from: t.originalCurrency || targetCurrency
+        // Fallback to per-transaction conversion since each transaction may have different source currency
+        const { convertAmount } = await import('@/lib/utils/currency');
+        const convertedAmounts = await Promise.all(transactions.map(async (t: any) => {
+          if (!t.originalAmount || !t.originalCurrency || t.originalCurrency === targetCurrency) {
+            return t.originalAmount || t.amount;
+          }
+          try {
+            return await convertAmount(t.originalAmount, t.originalCurrency, targetCurrency);
+          } catch {
+            return t.originalAmount || t.amount;
+          }
         }));
-        let convertedAmounts: number[] = [];
-        try {
-          convertedAmounts = await batchConvertAmounts(items, targetCurrency);
-        } catch (e) {
-          logger.warn({ requestId, error: e instanceof Error ? e.message : e }, 'Batch currency conversion failed, falling back to per-transaction');
-          const { convertAmount } = await import('@/lib/utils/currency');
-          convertedAmounts = await Promise.all(transactions.map(async (t: any) => {
-            if (!t.originalAmount || !t.originalCurrency || t.originalCurrency === targetCurrency) {
-              return t.originalAmount || t.amount;
-            }
-            try {
-              return await convertAmount(t.originalAmount, t.originalCurrency, targetCurrency);
-            } catch {
-              return t.originalAmount || t.amount;
-            }
-          }));
-        }
         transactions = transactions.map((t: any, i: number) => ({
           ...t,
           convertedAmount: convertedAmounts[i],
@@ -90,10 +79,30 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    return NextResponse.json({
-      success: true,
-      data: transactions
-    });
+    // Get total count for pagination
+    let totalCount = 0;
+    let hasMore = false;
+    
+    if (!search) {
+      // For regular queries, we can estimate based on returned results
+      totalCount = offset + transactions.length;
+      hasMore = transactions.length === limit; // If we got exactly the limit, there might be more
+    } else {
+      // For search, use the returned length (not ideal but works)
+      totalCount = transactions.length;
+      hasMore = false;
+    }
+
+          return NextResponse.json({
+        success: true,
+        data: transactions,
+        pagination: {
+          limit,
+          offset,
+          totalCount,
+          hasMore
+        }
+      });
   } catch (error) {
     const endTime = Date.now();
     const duration = endTime - startTime;

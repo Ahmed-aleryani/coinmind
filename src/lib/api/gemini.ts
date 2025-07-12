@@ -1,14 +1,34 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { ParsedTransactionText, ReceiptData, TransactionCategory } from '../types/transaction';
 import { transactionDb, initDatabase } from '../db/schema';
 import { formatCurrency } from '../utils/formatters';
 import { detectLanguage, formatCurrencyByLanguage, extractCurrencyAmount } from '../utils/language-detection';
 import logger from '../utils/logger';
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-const proModel = genAI.getGenerativeModel({ model: 'gemini-2.5-pro-preview-06-05' }); // Use latest preview for better performance
+// Lazy-loaded Gemini AI client
+let _aiInstance: GoogleGenAI | null = null;
+
+function getAiClient(): GoogleGenAI {
+  if (!_aiInstance) {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY is not set in environment variables');
+    }
+    
+    _aiInstance = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY
+    });
+    
+    logger.info('Gemini AI client initialized');
+  }
+  
+  return _aiInstance;
+}
+
+// Model names for different use cases
+const MODEL_NAMES = {
+  FLASH: 'gemini-2.5-flash',
+  PRO: 'gemini-2.5-pro-preview-06-05'
+};
 
 // Transaction categories for consistent categorization
 const CATEGORIES: TransactionCategory[] = [
@@ -35,358 +55,108 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
   // Detect the language of the input text
   const detectedLanguage = detectLanguage(text);
   const todayDate = new Date().toISOString();
-  const yesterdayDate = new Date(Date.now() - 24*60*60*1000).toISOString();
   
-  // Create language-specific prompts
-  const languagePrompts: Record<string, string> = {
-    ar: `
-      قم بتحليل هذا النص المالي وتحويله إلى بيانات منظمة:
-      "${text}"
-      
-      تاريخ اليوم هو: ${todayDate}
-      
-      قم بتحليل الرسالة بعناية واستخرج:
-      1. المبلغ (مع الإشارة الصحيحة: موجب للدخل/الأرباح، سالب للمصروفات)
-      2. العملة (ريال، دولار، يورو، إلخ - استخدم "SAR" للريال السعودي)
-      3. البائع/المصدر (من أين حصلت على المال أو دفعته)
-      4. الوصف (ما كان المعاملة من أجله)
-      5. التاريخ (استخدم تاريخ اليوم دائماً ما لم يذكر المستخدم تاريخاً مختلفاً)
-      6. الفئة (اختر الأنسب)
-      
-      أعد فقط كائن JSON بهذه الحقول (استخدم null للبيانات المفقودة):
-      {
-        "amount": number (موجب للدخل، سالب للمصروفات),
-        "currency": string (رمز العملة مثل "SAR", "USD", "EUR"),
-        "vendor": string,
-        "description": string,
-        "date": string (تنسيق ISO، استخدم تاريخ اليوم دائماً ما لم يحدد خلاف ذلك),
-        "category": string (واحدة من: ${CATEGORIES.join(', ')})
-      }
-      
-      قواعد التاريخ المهمة:
-      - استخدم تاريخ اليوم (${todayDate}) دائماً ما لم يذكر المستخدم تاريخاً مختلفاً
-      - استخدم تاريخاً مختلفاً فقط إذا قال المستخدم شيئاً مثل "أمس"، "الأسبوع الماضي"، "الاثنين"، "15 يناير"، إلخ
-      - العبارات مثل "ربحت"، "اشتريت"، "حصلت" بدون مؤشرات زمنية يجب أن تستخدم تاريخ اليوم
-      
-      قواعد أخرى:
-      - للدخل/الأرباح (ربح، حصل، استلم، راتب، مكافأة، استرداد، باع): استخدم مبالغ موجبة
-      - للمصروفات (اشترى، أنفق، دفع، اشترى): استخدم مبالغ سالبة
-      - استخرج البائع من السياق (مثل "من حدث Cursor Tallinn" → "حدث Cursor Tallinn")
-      - كن ذكياً في التصنيف (الجوائز/الأرباح = الدخل، مشتريات الطعام = الطعام والشراب، إلخ)
-      - اكتب الوصف باللغة العربية دائماً (مثل "دفع فاتورة الكهرباء"، "شراء طعام"، "راتب الشهر")
-      - اكتشف العملة من النص (ريال = SAR، دولار = USD، يورو = EUR، إلخ)
-    `,
-    en: `
-      Parse this natural language transaction description into structured data:
-      "${text}"
-      
-      Today's date is: ${todayDate}
-      
-      Analyze the message carefully and extract:
-      1. Amount (with correct sign: positive for income/earnings, negative for expenses)
-      2. Currency (dollar, euro, pound, etc. - use "USD" for dollar, "EUR" for euro)
-      3. Vendor/source (who you received money from or paid money to)
-      4. Description (what the transaction was for)
-      5. Date (ALWAYS use today's date unless user explicitly mentions a different date)
-      6. Category (choose the most appropriate one)
-      
-      Return ONLY a JSON object with these fields (use null for missing data):
-      {
-        "amount": number (positive for income, negative for expenses),
-        "currency": string (currency code like "USD", "EUR", "GBP"),
-        "vendor": string,
-        "description": string,
-        "date": string (ISO format, ALWAYS use today's date unless explicitly specified),
-        "category": string (one of: ${CATEGORIES.join(', ')})
-      }
-      
-      IMPORTANT DATE RULES:
-      - ALWAYS use today's date (${todayDate}) unless the user explicitly mentions a different date
-      - Only use a different date if the user says something like "yesterday", "last week", "on Monday", "January 15th", etc.
-      - Phrases like "I won", "I bought", "I received" without time indicators should use TODAY'S date
-      
-      OTHER RULES:
-      - For income/earnings (won, earned, received, got paid, salary, bonus, refund, sold): use POSITIVE amounts
-      - For expenses (bought, spent, paid, purchased): use NEGATIVE amounts
-      - Extract vendor from context (e.g., "from Cursor Tallinn event" → "Cursor Tallinn event")
-      - Be smart about categorization (prizes/winnings = Income, food purchases = Food & Drink, etc.)
-      - Write the description in English (e.g., "electricity bill payment", "food purchase", "monthly salary")
-      - Detect currency from text (dollar = USD, euro = EUR, pound = GBP, etc.)
-    `,
-    es: `
-      Analiza esta descripción de transacción en lenguaje natural y conviértela en datos estructurados:
-      "${text}"
-      
-      La fecha de hoy es: ${todayDate}
-      
-      Analiza el mensaje cuidadosamente y extrae:
-      1. Cantidad (con el signo correcto: positivo para ingresos/ganancias, negativo para gastos)
-      2. Moneda (dólar, euro, libra, etc. - usa "USD" para dólar, "EUR" para euro)
-      3. Vendedor/fuente (de quién recibiste dinero o a quién pagaste)
-      4. Descripción (para qué era la transacción)
-      5. Fecha (SIEMPRE usa la fecha de hoy a menos que el usuario mencione explícitamente una fecha diferente)
-      6. Categoría (elige la más apropiada)
-      
-      Devuelve SOLO un objeto JSON con estos campos (usa null para datos faltantes):
-      {
-        "amount": number (positivo para ingresos, negativo para gastos),
-        "currency": string (código de moneda como "USD", "EUR", "GBP"),
-        "vendor": string,
-        "description": string,
-        "date": string (formato ISO, SIEMPRE usa la fecha de hoy a menos que se especifique explícitamente),
-        "category": string (una de: ${CATEGORIES.join(', ')})
-      }
-      
-      REGLAS IMPORTANTES:
-      - Escribe la descripción en español (ej: "pago de factura de electricidad", "compra de comida", "salario mensual")
-      - Detecta la moneda del texto (dólar = USD, euro = EUR, libra = GBP, etc.)
-    `,
-    fr: `
-      Analysez cette description de transaction en langage naturel et convertissez-la en données structurées:
-      "${text}"
-      
-      La date d'aujourd'hui est: ${todayDate}
-      
-      Analysez le message attentivement et extrayez:
-      1. Montant (avec le bon signe: positif pour les revenus/gains, négatif pour les dépenses)
-      2. Devise (dollar, euro, livre, etc. - utilisez "USD" pour dollar, "EUR" pour euro)
-      3. Vendeur/source (de qui vous avez reçu de l'argent ou à qui vous avez payé)
-      4. Description (à quoi servait la transaction)
-      5. Date (UTILISEZ TOUJOURS la date d'aujourd'hui sauf si l'utilisateur mentionne explicitement une date différente)
-      6. Catégorie (choisissez la plus appropriée)
-      
-      Retournez SEULEMENT un objet JSON avec ces champs (utilisez null pour les données manquantes):
-      {
-        "amount": number (positif pour les revenus, négatif pour les dépenses),
-        "currency": string (code de devise comme "USD", "EUR", "GBP"),
-        "vendor": string,
-        "description": string,
-        "date": string (format ISO, UTILISEZ TOUJOURS la date d'aujourd'hui sauf spécification explicite),
-        "category": string (une de: ${CATEGORIES.join(', ')})
-      }
-      
-      RÈGLES IMPORTANTES:
-      - Écrivez la description en français (ex: "paiement de facture d'électricité", "achat de nourriture", "salaire mensuel")
-      - Détectez la devise du texte (dollar = USD, euro = EUR, livre = GBP, etc.)
-    `,
-    de: `
-      Analysieren Sie diese natürliche Transaktionsbeschreibung und konvertieren Sie sie in strukturierte Daten:
-      "${text}"
-      
-      Das heutige Datum ist: ${todayDate}
-      
-      Analysieren Sie die Nachricht sorgfältig und extrahieren Sie:
-      1. Betrag (mit korrektem Vorzeichen: positiv für Einkommen/Gewinne, negativ für Ausgaben)
-      2. Währung (Dollar, Euro, Pfund, etc. - verwenden Sie "USD" für Dollar, "EUR" für Euro)
-      3. Verkäufer/Quelle (von wem Sie Geld erhalten oder an wen Sie gezahlt haben)
-      4. Beschreibung (wofür die Transaktion war)
-      5. Datum (VERWENDEN SIE IMMER das heutige Datum, es sei denn, der Benutzer erwähnt explizit ein anderes Datum)
-      6. Kategorie (wählen Sie die am besten geeignete)
-      
-      Geben Sie NUR ein JSON-Objekt mit diesen Feldern zurück (verwenden Sie null für fehlende Daten):
-      {
-        "amount": number (positiv für Einkommen, negativ für Ausgaben),
-        "currency": string (Währungscode wie "USD", "EUR", "GBP"),
-        "vendor": string,
-        "description": string,
-        "date": string (ISO-Format, VERWENDEN SIE IMMER das heutige Datum, es sei denn explizit angegeben),
-        "category": string (eine von: ${CATEGORIES.join(', ')})
-      }
-      
-      WICHTIGE REGELN:
-      - Schreiben Sie die Beschreibung auf Deutsch (z.B. "Stromrechnung bezahlt", "Lebensmittel gekauft", "Monatsgehalt")
-      - Erkennen Sie die Währung aus dem Text (Dollar = USD, Euro = EUR, Pfund = GBP, etc.)
-    `,
-    ru: `
-      Проанализируйте это описание транзакции на естественном языке и преобразуйте его в структурированные данные:
-      "${text}"
-      
-      Сегодняшняя дата: ${todayDate}
-      
-      Внимательно проанализируйте сообщение и извлеките:
-      1. Сумму (с правильным знаком: положительная для дохода/заработка, отрицательная для расходов)
-      2. Валюту (доллар, евро, рубль, etc. - используйте "USD" для доллара, "EUR" для евро, "RUB" для рубля)
-      3. Продавца/источник (от кого вы получили деньги или кому заплатили)
-      4. Описание (для чего была транзакция)
-      5. Дату (ВСЕГДА используйте сегодняшнюю дату, если пользователь не указал другую дату)
-      6. Категорию (выберите наиболее подходящую)
-      
-      Верните ТОЛЬКО JSON объект с этими полями (используйте null для отсутствующих данных):
-      {
-        "amount": number (положительное для дохода, отрицательное для расходов),
-        "currency": string (код валюты как "USD", "EUR", "RUB"),
-        "vendor": string,
-        "description": string,
-        "date": string (формат ISO, ВСЕГДА используйте сегодняшнюю дату, если не указано иное),
-        "category": string (одна из: ${CATEGORIES.join(', ')})
-      }
-      
-      ВАЖНЫЕ ПРАВИЛА:
-      - Пишите описание на русском языке (например: "оплата счета за электричество", "покупка продуктов", "месячная зарплата")
-      - Определите валюту из текста (доллар = USD, евро = EUR, рубль = RUB, etc.)
-    `,
-    zh: `
-      解析这个自然语言交易描述并转换为结构化数据：
-      "${text}"
-      
-      今天的日期是：${todayDate}
-      
-      仔细分析消息并提取：
-      1. 金额（带正确符号：收入/收益为正，支出为负）
-      2. 货币（美元，欧元，人民币，etc. - 使用 "USD" 表示美元，"EUR" 表示欧元，"CNY" 表示人民币）
-      3. 供应商/来源（您从谁那里收到钱或向谁付款）
-      4. 描述（交易的目的）
-      5. 日期（除非用户明确提到不同日期，否则始终使用今天的日期）
-      6. 类别（选择最合适的）
-      
-      仅返回包含这些字段的JSON对象（对缺失数据使用null）：
-      {
-        "amount": number (收入为正，支出为负),
-        "currency": string (货币代码如 "USD", "EUR", "CNY"),
-        "vendor": string,
-        "description": string,
-        "date": string (ISO格式，除非明确指定，否则始终使用今天的日期),
-        "category": string (其中之一: ${CATEGORIES.join(', ')})
-      }
-      
-      重要规则：
-      - 用中文写描述（例如："电费账单支付"，"食品购买"，"月薪"）
-      - 从文本中检测货币（美元 = USD，欧元 = EUR，人民币 = CNY，etc.）
-    `,
-    ja: `
-      この自然言語の取引説明を構造化データに解析します：
-      "${text}"
-      
-      今日の日付は：${todayDate}
-      
-      メッセージを注意深く分析し、以下を抽出してください：
-      1. 金額（正しい符号付き：収入/収益は正、支出は負）
-      2. 通貨（ドル、ユーロ、円、etc. - "USD" でドル、"EUR" でユーロ、"JPY" で円を表す）
-      3. ベンダー/ソース（お金を受け取った相手または支払った相手）
-      4. 説明（取引の目的）
-      5. 日付（ユーザーが明示的に異なる日付を言及しない限り、常に今日の日付を使用）
-      6. カテゴリ（最も適切なものを選択）
-      
-      これらのフィールドを持つJSONオブジェクトのみを返してください（欠損データにはnullを使用）：
-      {
-        "amount": number (収入は正、支出は負),
-        "currency": string (通貨コードとして "USD", "EUR", "JPY"),
-        "vendor": string,
-        "description": string,
-        "date": string (ISO形式、明示的に指定されない限り常に今日の日付を使用),
-        "category": string (以下の中から一つ: ${CATEGORIES.join(', ')})
-      }
-      
-      重要なルール：
-      - 説明を日本語で書いてください（例：「電気代の支払い」、「食料品の購入」、「月給」）
-      - テキストから通貨を検出してください（ドル = USD、ユーロ = EUR、円 = JPY、etc.）
-    `,
-    ko: `
-      이 자연어 거래 설명을 구조화된 데이터로 파싱합니다:
-      "${text}"
-      
-      오늘 날짜는: ${todayDate}
-      
-      메시지를 주의 깊게 분석하고 다음을 추출하세요:
-      1. 금액 (올바른 부호 포함: 수입/수익은 양수, 지출은 음수)
-      2. 통화 (달러, 유로, 원, etc. - "USD"로 달러, "EUR"로 유로, "KRW"로 원을 나타냄)
-      3. 공급업체/소스 (돈을 받은 사람 또는 지불한 사람)
-      4. 설명 (거래의 목적)
-      5. 날짜 (사용자가 명시적으로 다른 날짜를 언급하지 않는 한 항상 오늘 날짜 사용)
-      6. 카테고리 (가장 적절한 것 선택)
-      
-      이러한 필드가 있는 JSON 객체만 반환하세요 (누락된 데이터에는 null 사용):
-      {
-        "amount": number (수입은 양수, 지출은 음수),
-        "currency": string (통화 코드로 "USD", "EUR", "KRW"),
-        "vendor": string,
-        "description": string,
-        "date": string (ISO 형식, 명시적으로 지정되지 않는 한 항상 오늘 날짜 사용),
-        "category": string (다음 중 하나: ${CATEGORIES.join(', ')})
-      }
-      
-      중요한 규칙:
-      - 설명을 한국어로 작성하세요 (예: "전기 요금 지불", "식료품 구매", "월급")
-      - 텍스트에서 통화를 감지하세요 (달러 = USD, 유로 = EUR, 원 = KRW, etc.)
-    `,
-    hi: `
-      इस प्राकृतिक भाषा लेन-देन विवरण को संरचित डेटा में पार्स करें:
-      "${text}"
-      
-      आज की तारीख है: ${todayDate}
-      
-      संदेश का सावधानीपूर्वक विश्लेषण करें और निम्नलिखित निकालें:
-      1. राशि (सही संकेत के साथ: आय/कमाई के लिए सकारात्मक, खर्च के लिए नकारात्मक)
-      2. मुद्रा (डॉलर, यूरो, रुपया, etc. - "USD" डॉलर के लिए, "EUR" यूरो के लिए, "INR" रुपया के लिए)
-      3. विक्रेता/स्रोत (जिससे आपको पैसा मिला या जिसे आपने भुगतान किया)
-      4. विवरण (लेन-देन किस लिए था)
-      5. तारीख (हमेशा आज की तारीख का उपयोग करें जब तक कि उपयोगकर्ता स्पष्ट रूप से अलग तारीख न बताए)
-      6. श्रेणी (सबसे उपयुक्त चुनें)
-      
-      केवल इन फ़ील्ड्स के साथ JSON ऑब्जेक्ट लौटाएं (गायब डेटा के लिए null का उपयोग करें):
-      {
-        "amount": number (आय के लिए सकारात्मक, खर्च के लिए नकारात्मक),
-        "currency": string (मुद्रा कोड जैसे "USD", "EUR", "INR"),
-        "vendor": string,
-        "description": string,
-        "date": string (ISO प्रारूप, स्पष्ट रूप से निर्दिष्ट न होने तक हमेशा आज की तारीख का उपयोग करें),
-        "category": string (इनमें से एक: ${CATEGORIES.join(', ')})
-      }
-      
-      महत्वपूर्ण नियम:
-      - विवरण हिंदी में लिखें (उदाहरण: "बिजली बिल भुगतान", "खाद्य खरीदारी", "मासिक वेतन")
-      - टेक्स्ट से मुद्रा का पता लगाएं (डॉलर = USD, यूरो = EUR, रुपया = INR, etc.)
-    `,
-    tr: `
-      Bu doğal dil işlem açıklamasını yapılandırılmış verilere ayrıştırın:
-      "${text}"
-      
-      Bugünün tarihi: ${todayDate}
-      
-      Mesajı dikkatlice analiz edin ve şunları çıkarın:
-      1. Miktar (doğru işaretle: gelir/kazanç için pozitif, gider için negatif)
-      2. Para birimi (dolar, euro, lira, etc. - "USD" dolar için, "EUR" euro için, "TRY" lira için)
-      3. Satıcı/kaynak (kimden para aldığınız veya kime ödeme yaptığınız)
-      4. Açıklama (işlemin ne için olduğu)
-      5. Tarih (kullanıcı açıkça farklı bir tarih belirtmediği sürece her zaman bugünün tarihini kullanın)
-      6. Kategori (en uygun olanı seçin)
-      
-      Sadece bu alanlarla JSON nesnesi döndürün (eksik veriler için null kullanın):
-      {
-        "amount": number (gelir için pozitif, gider için negatif),
-        "currency": string (para birimi kodu gibi "USD", "EUR", "TRY"),
-        "vendor": string,
-        "description": string,
-        "date": string (ISO formatı, açıkça belirtilmediği sürece her zaman bugünün tarihini kullanın),
-        "category": string (bunlardan biri: ${CATEGORIES.join(', ')})
-      }
-      
-      ÖNEMLİ KURALLAR:
-      - Açıklamayı Türkçe yazın (örnek: "elektrik faturası ödemesi", "gıda alışverişi", "aylık maaş")
-      - Metinden para birimini tespit edin (dolar = USD, euro = EUR, lira = TRY, etc.)
-    `
-  };
+  // AI will handle all date parsing, including relative dates
 
-  // Get the appropriate prompt for the detected language, fallback to English
-  const prompt = languagePrompts[detectedLanguage.code] || languagePrompts.en;
+  // Create a single prompt that adapts to the user's language
+  const prompt = `Parse this natural language transaction description into structured data:
+"${text}"
+
+Today's date is: ${todayDate}
+
+IMPORTANT: Respond in the same language as the user's input.
+
+Analyze the message carefully and extract:
+1. Amount (with correct sign: positive for income/earnings, negative for expenses)
+2. Currency (dollar, euro, pound, etc. - use standard currency codes like "USD", "EUR", "GBP")
+3. Vendor/source (who the user received money from or paid money to)
+4. Description (what the transaction was for, in the user's language)
+5. Date (convert ALL dates to ISO format YYYY-MM-DD, including relative dates like 'yesterday', '2 days ago', 'last Monday')
+6. Category (choose the most appropriate one from the list)
+
+Return ONLY a JSON object with these fields (use null for missing data):
+{
+  "amount": number (positive for income, negative for expenses),
+  "currency": string (3-letter currency code like "USD", "EUR", "GBP"),
+  "vendor": string,
+  "description": string (in the user's language),
+  "date": string (ISO format YYYY-MM-DD, e.g., "2025-07-11"),
+  "category": string (one of: ${CATEGORIES.join(', ')})
+}
+
+RULES:
+- For income/earnings: use POSITIVE amounts
+- For expenses: use NEGATIVE amounts
+- Today's date to be used as a reference is: ${todayDate}
+- For date: 
+  * Convert ALL relative dates to absolute dates in ISO format (YYYY-MM-DD)
+  * If the text contains "X days ago", calculate the exact date
+  * If the text contains "last [weekday]", find the most recent occurrence of that weekday
+  * If no date is mentioned, use today's date (${todayDate})
+  * Example: If today is 2025-07-11 and text says "5 days ago", use "2025-07-06"
+- For description: use the same language as the user's input
+- For vendor: extract the relevant name from the context
+- For category: choose the most relevant from the provided list`;
 
   try {
-    logger.debug({ promptLength: prompt.length, detectedLanguage: detectedLanguage.code }, 'Sending request to Gemini model');
+    // Send request to Gemini model
     
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    // Generate content using the client
+    const response = await getAiClient().models.generateContent({
+      model: MODEL_NAMES.FLASH,
+      contents: [{
+        role: 'user',
+        parts: [{
+          text: prompt
+        }]
+      }]
+    });
     
-    logger.debug({ responseLength: text.length }, 'Received response from Gemini model');
+    const responseText = response.text;
+    
+    if (!responseText) {
+      throw new Error('Empty response from Gemini API');
+    }
+    
+    // Received response from Gemini model
     
     // Extract JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      logger.error({ response: text }, 'No valid JSON found in Gemini response');
+      logger.error({ response: responseText }, 'No valid JSON found in Gemini response');
       throw new Error('No valid JSON found in response');
     }
 
+    // Parse the JSON response
     const parsed = JSON.parse(jsonMatch[0]);
+    
+    // Log basic parsing info
+    logger.debug({ 
+      hasAmount: parsed.amount !== undefined,
+      hasDate: parsed.date !== undefined,
+      category: parsed.category
+    }, 'Parsed AI response');
+    
+    // Parse the date from the AI response
+    let transactionDate: Date | undefined;
+    
+    if (parsed.date) {
+      try {
+        transactionDate = new Date(parsed.date);
+        if (isNaN(transactionDate.getTime())) {
+          throw new Error('Invalid date format from AI');
+        }
+      } catch (e) {
+        logger.warn({ 
+          date: parsed.date,
+          error: e instanceof Error ? e.message : 'Unknown error',
+          originalText: text
+        }, 'Date parsing failed, using current date');
+        transactionDate = new Date();
+      }
+    } else {
+      transactionDate = new Date();
+    }
     
     // Arabic expense keyword correction
     let amount = parsed.amount ? Number(parsed.amount) : undefined;
@@ -401,12 +171,14 @@ export async function parseTransactionText(text: string): Promise<ParsedTransact
         type = 'expense';
       }
     }
+    // Note: Using date from AI response
     
     const result_data = {
       amount: typeof amount === 'number' ? amount : undefined,
+      currency: parsed.currency || undefined,
       vendor: parsed.vendor || undefined,
       description: parsed.description || undefined,
-      date: parsed.date ? new Date(parsed.date) : undefined,
+      date: transactionDate,
       category: parsed.category || undefined,
       type: type // will be undefined unless we force expense above
     };
@@ -467,22 +239,31 @@ export async function parseReceiptImage(imageBase64: string): Promise<ReceiptDat
   `;
 
   try {
-    logger.debug({ promptLength: prompt.length }, 'Sending receipt image to Gemini model');
+    // Send receipt image to Gemini model
     
-    const result = await model.generateContent([
-      prompt,
-      {
-        inlineData: {
-          data: imageBase64,
-          mimeType: 'image/jpeg'
-        }
-      }
-    ]);
+    const response = await getAiClient().models.generateContent({
+      model: MODEL_NAMES.FLASH,
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              data: imageBase64,
+              mimeType: 'image/jpeg'
+            }
+          }
+        ]
+      }]
+    });
 
-    const response = await result.response;
-    const text = response.text();
+    const text = response.text;
     
-    logger.debug({ responseLength: text.length }, 'Received receipt parsing response');
+    if (!text) {
+      throw new Error('Empty response from Gemini API');
+    }
+    
+    // Received receipt parsing response
     
     // Extract JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -549,9 +330,21 @@ export async function categorizeTransaction(
   `;
 
   try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const category = response.text().trim();
+    const response = await getAiClient().models.generateContent({
+      model: MODEL_NAMES.FLASH,
+      contents: [{
+        role: 'user',
+        parts: [{
+          text: prompt
+        }]
+      }]
+    });
+    
+    const category = response.text?.trim();
+    
+    if (!category) {
+      throw new Error('Empty response from Gemini API');
+    }
     
     // Validate category
     if (CATEGORIES.includes(category as TransactionCategory)) {
@@ -560,257 +353,570 @@ export async function categorizeTransaction(
     
     return 'Other';
   } catch (error) {
-    console.error('Error categorizing transaction:', error);
+    logger.error({ error: error instanceof Error ? error.message : error }, 'Error categorizing transaction');
     return 'Other';
   }
 }
 
 /**
- * Answer questions about transactions and spending using the generic database query tool
+ * Function calling system for dynamic SQL query generation
+ * This replaces the keyword-based approach with proper AI function calling
  */
-export async function queryTransactions(
-  question: string,
-  transactionData: Record<string, unknown>[]
-): Promise<string> {
-  const startTime = Date.now();
-  
-  logger.info({ 
-    question: question.substring(0, 100),
-    dataCount: transactionData.length 
-  }, 'Starting transaction query processing');
-  
-  // Parse the question to determine what kind of query to make
-  const queryParams = parseQuestionToQueryParams(question);
-  
-  logger.debug({ queryParams }, 'Parsed query parameters');
-  
-  // Get the data using our generic query function
-  const analysisResult = queryFinancialDatabase(queryParams);
-  
-  logger.debug({ 
-    analysisType: analysisResult.type,
-    hasData: !!analysisResult 
-  }, 'Database analysis completed');
-  
-  // Format the result into a conversational response
-  const prompt = `
-    Based on this financial analysis, answer the user's question: "${question}"
-    
-    Analysis Result:
-    ${JSON.stringify(analysisResult, null, 2)}
-    
-    Provide a helpful, conversational response. Include specific numbers and insights.
-    Use the data from the analysis result to give accurate information.
-    Format currency amounts nicely (e.g., $1,234.56).
-    
-    Examples:
-    - "How much did I spend this month?" → "You spent $1,234 this month across 15 transactions."
-    - "What's my biggest expense category?" → "Your biggest expense is Food & Drink at $456 (35% of total spending)."
-  `;
 
-  try {
-    logger.debug({ promptLength: prompt.length }, 'Sending query response generation to Gemini');
-    
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const responseText = response.text();
-    
-    const endTime = Date.now();
-    const duration = endTime - startTime;
-    
-    logger.info({ 
-      duration,
-      responseLength: responseText.length,
-      question: question.substring(0, 100)
-    }, 'Transaction query processing completed');
-    
-    return responseText;
-  } catch (error) {
-    const endTime = Date.now();
-    const duration = endTime - startTime;
-    
-    logger.error({ 
-      error: error instanceof Error ? error.message : error,
-      duration,
-      question: question.substring(0, 100)
-    }, 'Transaction query processing failed');
-    
-    return 'I apologize, but I encountered an error while analyzing your transactions. Please try again.';
-  }
+interface DatabaseQueryTools {
+  name: string;
+  description: string;
+  parameters: any;
 }
 
-/**
- * Parse a natural language question into query parameters
- */
-function parseQuestionToQueryParams(question: string): DatabaseQueryParams {
-  const lowerQuestion = question.toLowerCase();
-  const params: DatabaseQueryParams = {};
-  
-  // Determine analysis type
-  if (lowerQuestion.includes('spend') || lowerQuestion.includes('spent')) {
-    params.analysisType = 'spending';
-    params.transactionType = 'expense';
-  } else if (lowerQuestion.includes('income') || lowerQuestion.includes('earned') || lowerQuestion.includes('made')) {
-    params.analysisType = 'income';
-    params.transactionType = 'income';
-  } else if (lowerQuestion.includes('categor')) {
-    params.analysisType = 'categories';
-  } else if (lowerQuestion.includes('vendor') || lowerQuestion.includes('where') || lowerQuestion.includes('who')) {
-    params.analysisType = 'vendors';
-  } else if (lowerQuestion.includes('pattern') || lowerQuestion.includes('trend')) {
-    params.analysisType = 'patterns';
-  } else if (lowerQuestion.includes('transaction') || lowerQuestion.includes('list')) {
-    params.analysisType = 'transactions';
-  } else {
-    params.analysisType = 'summary';
-  }
-  
-  // Parse time periods
-  if (lowerQuestion.includes('today')) {
-    params.specificDate = new Date().toISOString().split('T')[0];
-  } else if (lowerQuestion.includes('yesterday')) {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    params.specificDate = yesterday.toISOString().split('T')[0];
-  } else if (lowerQuestion.includes('last week')) {
-    params.weeksBack = 1;
-  } else if (lowerQuestion.includes('this week')) {
-    params.daysBack = 7;
-  } else if (lowerQuestion.includes('last month')) {
-    params.monthsBack = 1;
-  } else if (lowerQuestion.includes('this month')) {
-    const now = new Date();
-    params.startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    params.endDate = now.toISOString();
-  } else if (lowerQuestion.includes('last 30 days') || lowerQuestion.includes('past 30 days')) {
-    params.daysBack = 30;
-  } else if (lowerQuestion.includes('last 7 days') || lowerQuestion.includes('past 7 days')) {
-    params.daysBack = 7;
-  }
-  
-  // Parse specific categories
-  const categories = ['food', 'transport', 'utilities', 'entertainment', 'shopping', 'healthcare', 'education'];
-  for (const category of categories) {
-    if (lowerQuestion.includes(category)) {
-      params.category = category;
-      break;
+// Define available function tools for the AI to use
+const DATABASE_QUERY_TOOLS: DatabaseQueryTools[] = [
+  {
+    name: "query_transactions",
+    description: "Query transaction data with flexible SQL conditions. Use this to answer questions about spending, income, transactions, categories, vendors, dates, etc.",
+    parameters: {
+      type: "object",
+      properties: {
+        sql_query: {
+          type: "string",
+          description: "A SQL query to execute against the transactions table. Available columns: id, amount, description, vendor, category, type (income/expense), date, created_at, updated_at, original_amount, original_currency, converted_amount, converted_currency, conversion_rate, conversion_fee"
+        },
+        explanation: {
+          type: "string", 
+          description: "Brief explanation of what this query does"
+        }
+      },
+      required: ["sql_query", "explanation"]
+    }
+  },
+  {
+    name: "get_transaction_summary",
+    description: "Get a summary of transaction statistics for a time period or category",
+    parameters: {
+      type: "object",
+      properties: {
+        start_date: {
+          type: "string",
+          description: "Start date in YYYY-MM-DD format (optional)"
+        },
+        end_date: {
+          type: "string", 
+          description: "End date in YYYY-MM-DD format (optional)"
+        },
+        category: {
+          type: "string",
+          description: "Filter by category (optional)"
+        },
+        transaction_type: {
+          type: "string",
+          description: "Filter by type: 'income', 'expense', or 'all' (optional, defaults to 'all')"
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "get_spending_by_category",
+    description: "Get spending breakdown by category for analysis",
+    parameters: {
+      type: "object", 
+      properties: {
+        start_date: {
+          type: "string",
+          description: "Start date in YYYY-MM-DD format (optional)"
+        },
+        end_date: {
+          type: "string",
+          description: "End date in YYYY-MM-DD format (optional)" 
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of categories to return (optional, defaults to 10)"
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "get_spending_by_vendor",
+    description: "Get spending breakdown by vendor/merchant",
+    parameters: {
+      type: "object",
+      properties: {
+        start_date: {
+          type: "string",
+          description: "Start date in YYYY-MM-DD format (optional)"
+        },
+        end_date: {
+          type: "string",
+          description: "End date in YYYY-MM-DD format (optional)"
+        },
+        limit: {
+          type: "number", 
+          description: "Maximum number of vendors to return (optional, defaults to 10)"
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "get_recent_transactions",
+    description: "Get recent transactions, optionally filtered by category, vendor, or amount",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "number",
+          description: "Number of transactions to return (optional, defaults to 10)"
+        },
+        category: {
+          type: "string",
+          description: "Filter by category (optional)"
+        },
+        vendor: {
+          type: "string",
+          description: "Filter by vendor (optional)"
+        },
+        min_amount: {
+          type: "number",
+          description: "Minimum amount filter (optional)"
+        },
+        max_amount: {
+          type: "number",
+          description: "Maximum amount filter (optional)"
+        },
+        transaction_type: {
+          type: "string",
+          description: "Filter by type: 'income' or 'expense' (optional)"
+        }
+      },
+      required: []
     }
   }
+];
+
+/**
+ * Execute a database query function called by the AI
+ */
+async function executeQueryFunction(functionName: string, args: any): Promise<any> {
+  const startTime = Date.now();
   
-  // Parse grouping
-  if (lowerQuestion.includes('by day') || lowerQuestion.includes('daily')) {
-    params.groupBy = 'date';
-  } else if (lowerQuestion.includes('by week') || lowerQuestion.includes('weekly')) {
-    params.groupBy = 'weekday';
-  } else if (lowerQuestion.includes('by month') || lowerQuestion.includes('monthly')) {
-    params.groupBy = 'month';
+  logger.info({ functionName, args }, 'Executing AI-requested database function');
+  
+  try {
+    initDatabase();
+    
+    switch (functionName) {
+      case 'query_transactions':
+        return await executeCustomSQLQuery(args.sql_query, args.explanation);
+        
+      case 'get_transaction_summary':
+        return await getTransactionSummary(args);
+        
+      case 'get_spending_by_category':
+        return await getSpendingByCategory(args);
+        
+      case 'get_spending_by_vendor':
+        return await getSpendingByVendor(args);
+        
+      case 'get_recent_transactions':
+        return await getRecentTransactions(args);
+        
+      default:
+        throw new Error(`Unknown function: ${functionName}`);
+    }
+  } catch (error) {
+    const endTime = Date.now();
+    logger.error({ 
+      functionName, 
+      args, 
+      error: error instanceof Error ? error.message : error,
+      duration: endTime - startTime
+    }, 'Database function execution failed');
+    
+    throw error;
   }
-  
-  return params;
 }
 
 /**
- * Generate suggestions for financial improvements
+ * Execute a custom SQL query with safety checks
  */
-export async function generateFinancialSuggestions(
-  stats: {
-    totalIncome: number;
-    totalExpenses: number;
-    topCategories: Array<{ category: string; amount: number }>;
+async function executeCustomSQLQuery(sqlQuery: string, explanation: string): Promise<any> {
+  // Basic SQL injection protection - only allow SELECT queries
+  const trimmedQuery = sqlQuery.trim().toLowerCase();
+  if (!trimmedQuery.startsWith('select')) {
+    throw new Error('Only SELECT queries are allowed');
   }
-): Promise<string[]> {
-  const prompt = `
-    Based on these financial statistics, provide 3-5 actionable suggestions for improvement:
-    
-    Monthly Income: $${stats.totalIncome}
-    Monthly Expenses: $${stats.totalExpenses}
-    Top Spending Categories: ${stats.topCategories.map(c => `${c.category}: $${c.amount}`).join(', ')}
-    
-    Return suggestions as a JSON array of strings.
-    Focus on practical, actionable advice.
-  `;
-
+  
+  // Prevent dangerous operations
+  const forbidden = ['drop', 'delete', 'insert', 'update', 'alter', 'create', 'truncate'];
+  if (forbidden.some(word => trimmedQuery.includes(word))) {
+    throw new Error('Query contains forbidden operations');
+  }
+  
+  const { initDatabase } = await import('@/lib/db/schema');
+  const db = initDatabase();
+  
+  logger.info({ sqlQuery, explanation }, 'Executing custom SQL query');
+  
   try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const stmt = db.prepare(sqlQuery);
+    const results = stmt.all();
     
-    // Extract JSON array from response
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    return {
+      success: true,
+      data: results,
+      explanation,
+      query: sqlQuery,
+      count: results.length
+    };
+  } catch (error) {
+    logger.error({ sqlQuery, error: error instanceof Error ? error.message : error }, 'Custom SQL query failed');
+    throw new Error(`SQL query failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get transaction summary with optional filters
+ */
+async function getTransactionSummary(args: any): Promise<any> {
+  const db = initDatabase();
+  
+  let whereClause = '';
+  const params: any[] = [];
+  
+  if (args.start_date) {
+    whereClause += whereClause ? ' AND ' : ' WHERE ';
+    whereClause += 'date >= ?';
+    params.push(args.start_date);
+  }
+  
+  if (args.end_date) {
+    whereClause += whereClause ? ' AND ' : ' WHERE ';
+    whereClause += 'date <= ?';
+    params.push(args.end_date);
+  }
+  
+  if (args.category) {
+    whereClause += whereClause ? ' AND ' : ' WHERE ';
+    whereClause += 'category = ?';
+    params.push(args.category);
+  }
+  
+  if (args.transaction_type && args.transaction_type !== 'all') {
+    whereClause += whereClause ? ' AND ' : ' WHERE ';
+    whereClause += 'type = ?';
+    params.push(args.transaction_type);
+  }
+  
+  const query = `
+    SELECT 
+      COUNT(*) as total_transactions,
+      SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as total_income,
+      SUM(CASE WHEN type = 'expense' THEN ABS(amount) ELSE 0 END) as total_expenses,
+      AVG(CASE WHEN type = 'expense' THEN ABS(amount) ELSE NULL END) as avg_expense,
+      MIN(date) as earliest_date,
+      MAX(date) as latest_date
+    FROM transactions${whereClause}
+  `;
+  
+  const stmt = db.prepare(query);
+  const result = stmt.get(...params);
+  
+  return {
+    success: true,
+    data: result,
+    query_description: 'Transaction summary statistics'
+  };
+}
+
+/**
+ * Get spending breakdown by category
+ */
+async function getSpendingByCategory(args: any): Promise<any> {
+  const db = initDatabase();
+  
+  let whereClause = "WHERE type = 'expense'";
+  const params: any[] = [];
+  
+  if (args.start_date) {
+    whereClause += ' AND date >= ?';
+    params.push(args.start_date);
+  }
+  
+  if (args.end_date) {
+    whereClause += ' AND date <= ?';
+    params.push(args.end_date);
+  }
+  
+  const limit = args.limit || 10;
+  
+  const query = `
+    SELECT 
+      category,
+      COUNT(*) as transaction_count,
+      SUM(ABS(amount)) as total_spent,
+      AVG(ABS(amount)) as avg_spent
+    FROM transactions 
+    ${whereClause}
+    GROUP BY category
+    ORDER BY total_spent DESC
+    LIMIT ?
+  `;
+  
+  const stmt = db.prepare(query);
+  const results = stmt.all(...params, limit);
+  
+  return {
+    success: true,
+    data: results,
+    query_description: 'Spending breakdown by category'
+  };
+  }
+  
+/**
+ * Get spending breakdown by vendor
+ */
+async function getSpendingByVendor(args: any): Promise<any> {
+  const db = initDatabase();
+  
+  let whereClause = "WHERE type = 'expense'";
+  const params: any[] = [];
+  
+  if (args.start_date) {
+    whereClause += ' AND date >= ?';
+    params.push(args.start_date);
+}
+
+  if (args.end_date) {
+    whereClause += ' AND date <= ?';
+    params.push(args.end_date);
+  }
+  
+  const limit = args.limit || 10;
+  
+  const query = `
+    SELECT 
+      vendor,
+      COUNT(*) as transaction_count,
+      SUM(ABS(amount)) as total_spent,
+      AVG(ABS(amount)) as avg_spent
+    FROM transactions 
+    ${whereClause}
+    GROUP BY vendor
+    ORDER BY total_spent DESC
+    LIMIT ?
+  `;
+  
+  const stmt = db.prepare(query);
+  const results = stmt.all(...params, limit);
+  
+  return {
+    success: true,
+    data: results,
+    query_description: 'Spending breakdown by vendor'
+  };
+  }
+
+/**
+ * Get recent transactions with optional filters
+ */
+async function getRecentTransactions(args: any): Promise<any> {
+  const db = initDatabase();
+  
+  let whereClause = '';
+  const params: any[] = [];
+  
+  if (args.category) {
+    whereClause += whereClause ? ' AND ' : ' WHERE ';
+    whereClause += 'category = ?';
+    params.push(args.category);
+  }
+  
+  if (args.vendor) {
+    whereClause += whereClause ? ' AND ' : ' WHERE ';
+    whereClause += 'vendor LIKE ?';
+    params.push(`%${args.vendor}%`);
+  }
+  
+  if (args.min_amount) {
+    whereClause += whereClause ? ' AND ' : ' WHERE ';
+    whereClause += 'ABS(amount) >= ?';
+    params.push(args.min_amount);
+  }
+  
+  if (args.max_amount) {
+    whereClause += whereClause ? ' AND ' : ' WHERE ';
+    whereClause += 'ABS(amount) <= ?';
+    params.push(args.max_amount);
+  }
+  
+  if (args.transaction_type) {
+    whereClause += whereClause ? ' AND ' : ' WHERE ';
+    whereClause += 'type = ?';
+    params.push(args.transaction_type);
+    }
+
+  const limit = args.limit || 10;
+  
+  const query = `
+    SELECT id, amount, description, vendor, category, type, date, created_at
+    FROM transactions 
+    ${whereClause}
+    ORDER BY date DESC, created_at DESC
+    LIMIT ?
+  `;
+  
+  const stmt = db.prepare(query);
+  const results = stmt.all(...params, limit);
+  
+  return {
+    success: true,
+    data: results,
+    query_description: 'Recent transactions'
+  };
+}
+
+/**
+ * Answer user questions using AI-powered function calling to query the database
+ */
+export async function answerFinancialQuestion(question: string, userLanguage: string = 'en'): Promise<string> {
+  const startTime = Date.now();
+  
+  logger.info({ question: question.substring(0, 100), userLanguage }, 'Processing financial question with AI function calling');
+  
+  try {
+    // First, ask AI to determine which functions to call
+    const functionDetectionPrompt = `You are a financial assistant. The user asked: "${question}"
+
+Available database functions:
+${DATABASE_QUERY_TOOLS.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
+
+DATABASE SCHEMA INFORMATION:
+- Table: transactions
+- Date column: 'date' (stored as ISO strings like '2025-07-12T00:00:00.000Z')
+- Amount column: 'amount' (negative for expenses, positive for income)
+- Vendor column: 'vendor' (contains full vendor names, use LIKE '%keyword%' for partial matches)
+- Category column: 'category' (available categories: Food & Drink, Transportation, Entertainment, Shopping, Utilities, Healthcare, Income, Other, Lodging, Travel, Education, Gifts, Subscriptions, Groceries, Gas, Insurance, Investments, Savings, Debt, Fees, Taxes, Business, Personal Care, Home & Garden, Sports & Recreation, Childcare, Pet Care, Charity, Legal, Professional Services)
+- For date queries, use: substr(date, 1, 10) = 'YYYY-MM-DD' or date LIKE 'YYYY-MM-DD%'
+- For date ranges, use: date >= 'YYYY-MM-DD' AND date <= 'YYYY-MM-DD'
+- For vendor searches, use: vendor LIKE '%keyword%' (don't assume exact category, let the data determine the category)
+- IMPORTANT: When searching for vendors, be flexible with categories - hotels could be Entertainment, Lodging, or Travel
+
+Determine which function(s) to call to answer the user's question. Return ONLY a JSON array of function calls:
+
+[
+  {
+    "function": "function_name",
+    "args": {
+      "arg1": "value1",
+      "arg2": "value2"
+    }
+  }
+]
+
+Examples:
+- "How much did I spend this month?" → [{"function": "get_transaction_summary", "args": {"start_date": "2025-01-01", "end_date": "2025-01-31", "transaction_type": "expense"}}]
+- "Show me my food expenses" → [{"function": "get_spending_by_category", "args": {"category": "Food & Drink"}}]
+- "What did I spend at Starbucks?" → [{"function": "query_transactions", "args": {"sql_query": "SELECT amount, description, vendor, category, date FROM transactions WHERE vendor LIKE '%Starbucks%' AND type = 'expense'", "explanation": "Get all expenses at Starbucks"}}]
+- "How much was hotel at SeaView Resort?" → [{"function": "query_transactions", "args": {"sql_query": "SELECT amount, description, vendor, category, date FROM transactions WHERE vendor LIKE '%SeaView Resort%' AND type = 'expense'", "explanation": "Get all expenses at SeaView Resort"}}]
+- "What did I spend on July 12, 2025?" → [{"function": "query_transactions", "args": {"sql_query": "SELECT amount, description, vendor, category, date FROM transactions WHERE substr(date, 1, 10) = '2025-07-12' AND type = 'expense'", "explanation": "Get all expenses for July 12, 2025"}}]
+- "List my biggest expenses this year" → [{"function": "query_transactions", "args": {"sql_query": "SELECT amount, description, vendor, date FROM transactions WHERE type = 'expense' AND date >= '2025-01-01' ORDER BY ABS(amount) DESC LIMIT 10", "explanation": "Get top 10 biggest expenses this year"}}]
+
+Current date: ${new Date().toISOString().split('T')[0]}`;
+    
+    const response = await getAiClient().models.generateContent({
+      model: MODEL_NAMES.FLASH,
+      contents: [{
+        role: 'user',
+        parts: [{ text: functionDetectionPrompt }]
+      }]
+    });
+    
+    const responseText = response.text;
+    
+    if (!responseText) {
+      throw new Error('Empty response from AI');
+    }
+    
+    // Extract JSON from response
+    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      return ['Consider tracking your expenses more closely to identify saving opportunities.'];
+      // If no function calls detected, provide a general response
+      logger.info({ question: question.substring(0, 100) }, 'No function calls detected, providing general response');
+      return `I'd be happy to help you with your financial question. However, I need more specific information to query your data. Could you please be more specific about what you'd like to know about your finances?`;
     }
-
-    const suggestions = JSON.parse(jsonMatch[0]);
-    return Array.isArray(suggestions) ? suggestions : [];
+    
+    const functionCalls = JSON.parse(jsonMatch[0]);
+    
+    if (!Array.isArray(functionCalls) || functionCalls.length === 0) {
+      throw new Error('Invalid function calls format');
+    }
+    
+    logger.info({ functionCallsCount: functionCalls.length }, 'Function calls detected');
+    
+    // Execute each function call
+    const functionResults = [];
+    for (const call of functionCalls) {
+      try {
+        const functionResult = await executeQueryFunction(call.function, call.args);
+        functionResults.push({
+          name: call.function,
+          result: functionResult
+        });
   } catch (error) {
-    console.error('Error generating suggestions:', error);
-    return ['Consider tracking your expenses more closely to identify saving opportunities.'];
-  }
-}
-
-/**
- * Use Gemini to detect user intent from the message
- */
-export async function detectIntent(message: string): Promise<'create' | 'query' | 'help'> {
-  const startTime = Date.now();
-  
-  logger.info({ message: message.substring(0, 100) }, 'Starting intent detection');
-  
-  const prompt = `
-    Analyze this user message and determine the intent. Return ONLY one word:
-    
-    - "create" if the user is describing a financial transaction (spending money, earning money, making a purchase, receiving payment, etc.)
-    - "query" if the user is asking questions about their finances or requesting analysis (how much spent, show expenses, financial summaries, etc.)
-    - "help" if the user needs general assistance or the message doesn't fit the above categories
-    
-    User message: "${message}"
-    
-    Return only: create, query, or help
-  `;
-
-  try {
-    logger.debug({ promptLength: prompt.length }, 'Sending intent detection request to Gemini');
-    
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const intent = response.text().trim().toLowerCase();
-    
-    if (['create', 'query', 'help'].includes(intent)) {
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-      
-      logger.info({ intent, duration }, 'Intent detection completed successfully');
-      
-      return intent as 'create' | 'query' | 'help';
+    logger.error({ 
+          functionName: call.function, 
+          args: call.args, 
+          error: error instanceof Error ? error.message : error 
+        }, 'Function call failed');
+        
+        functionResults.push({
+          name: call.function,
+          error: error instanceof Error ? error.message : 'Function call failed'
+        });
+      }
     }
     
-    logger.warn({ intent, message: message.substring(0, 100) }, 'Unclear intent response, using fallback');
+    // Generate final response based on function results
+    const finalPrompt = `Based on the function call results, provide a helpful response to the user's question: "${question}"
+
+Function Results:
+${functionResults.map(r => `${r.name}: ${r.error ? `Error: ${r.error}` : JSON.stringify(r.result, null, 2)}`).join('\n\n')}
+
+Respond in ${userLanguage} with specific numbers and insights. Format currency amounts nicely and provide actionable insights. Be conversational and helpful.`;
+
+    const finalResponse = await getAiClient().models.generateContent({
+      model: MODEL_NAMES.FLASH,
+      contents: [{
+        role: 'user',
+        parts: [{ text: finalPrompt }]
+      }]
+    });
     
-    // Fallback to help if response is unclear
-    return 'help';
+    const finalText = finalResponse.text;
+    
+    if (!finalText) {
+      throw new Error('Empty final response from AI');
+    }
+    
+    const endTime = Date.now();
+    logger.info({ 
+      duration: endTime - startTime,
+      functionCallsCount: functionCalls.length,
+      responseLength: finalText.length
+    }, 'Financial question answered successfully with function calling');
+    
+    return finalText;
   } catch (error) {
     const endTime = Date.now();
-    const duration = endTime - startTime;
-    
     logger.error({ 
       error: error instanceof Error ? error.message : error,
-      duration 
-    }, 'Intent detection failed, using keyword fallback');
+      duration: endTime - startTime,
+      question: question.substring(0, 100)
+    }, 'Financial question processing failed');
     
-    // Fallback to simple keyword detection
-    const lowerMessage = message.toLowerCase();
-    let fallbackIntent: 'create' | 'query' | 'help' = 'help';
-    
-    if (lowerMessage.includes('$') || lowerMessage.includes('spent') || lowerMessage.includes('bought') || lowerMessage.includes('earned') || lowerMessage.includes('won')) {
-      fallbackIntent = 'create';
-    } else if (lowerMessage.includes('show') || lowerMessage.includes('how much') || lowerMessage.includes('total')) {
-      fallbackIntent = 'query';
-    }
-    
-    logger.info({ fallbackIntent }, 'Using keyword-based intent detection');
-    
-    return fallbackIntent;
+    return `I apologize, but I encountered an error while analyzing your financial data. Please try rephrasing your question or try again later.`;
   }
 }
 
@@ -862,21 +968,41 @@ Rules:
 
   try {
     // Use Pro Preview for faster processing, fallback to Flash if needed
-    let result;
-    let modelUsed = 'pro';
+    let response;
+    let modelUsed = MODEL_NAMES.PRO;
     
     try {
-      logger.debug({ promptLength: prompt.length }, 'Attempting CSV parsing with Pro model');
-      result = await proModel.generateContent(prompt);
+      // Attempt CSV parsing with Pro model
+      response = await getAiClient().models.generateContent({
+        model: MODEL_NAMES.PRO,
+        contents: [{
+          role: 'user',
+          parts: [{
+            text: prompt
+          }]
+        }]
+      });
     } catch (proError) {
       logger.warn({ error: proError instanceof Error ? proError.message : proError }, 'Pro Preview unavailable, using Flash model');
-      modelUsed = 'flash';
-      result = await model.generateContent(prompt);
+      modelUsed = MODEL_NAMES.FLASH;
+      response = await getAiClient().models.generateContent({
+        model: MODEL_NAMES.FLASH,
+        contents: [{
+          role: 'user',
+          parts: [{
+            text: prompt
+          }]
+        }]
+      });
     }
     
-    const text = result.response.text();
+    const text = response.text;
     
-    logger.debug({ responseLength: text.length, modelUsed }, 'Received CSV parsing response');
+    if (!text) {
+      throw new Error('Empty response from Gemini API');
+    }
+    
+    // Received CSV parsing response
     
     // Extract JSON from response (handles markdown code blocks)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -1245,14 +1371,17 @@ function formatTransaction(t: any) {
 
 // Helper function for category breakdown
 function getCategoryBreakdown(transactions: any[]) {
-  const categoryTotals = transactions.reduce((acc, t) => {
-    const category = t.category;
-    if (!acc[category]) acc[category] = 0;
-    acc[category] += Math.abs(t.amount);
-    return acc;
-  }, {} as Record<string, number>);
+  const categoryMap = new Map<string, number>();
   
-  return Object.entries(categoryTotals)
-    .map(([category, amount]) => ({ category, amount: amount as number }))
-    .sort((a, b) => (b.amount as number) - (a.amount as number));
-} 
+  for (const t of transactions) {
+    const category = t.category || 'Uncategorized';
+    const amount = Math.abs(t.amount || 0);
+    categoryMap.set(category, (categoryMap.get(category) || 0) + amount);
+  }
+  
+  return Array.from(categoryMap.entries())
+    .map(([category, amount]) => ({ category, amount }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+// Test function removed - was causing noisy logs
