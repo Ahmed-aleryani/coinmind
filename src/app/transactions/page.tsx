@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -64,6 +64,7 @@ interface Transaction {
   id: string;
   date: Date;
   amount: number;
+  currency: string;
   vendor: string;
   description: string;
   category: string;
@@ -96,6 +97,7 @@ export default function Transactions() {
     Transaction[]
   >([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -106,6 +108,17 @@ export default function Transactions() {
   const [defaultCurrency, setDefaultCurrency] = useState("USD");
   const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
   const [isCurrencyLoading, setIsCurrencyLoading] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 50;
+  
+  // Infinite scroll refs
+  const observerRef = useRef<IntersectionObserver | null>(null);
+// Removed unused loadingTriggerRef variable
+  
   const [formData, setFormData] = useState({
     amount: "",
     currency: "USD",
@@ -149,10 +162,17 @@ export default function Transactions() {
     window.location.reload();
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (page = 0, append = false) => {
     try {
+      if (!append) {
+        setIsLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
+
+      const offset = page * pageSize;
       const response = await fetch(
-        `/api/transactions?currency=${defaultCurrency}`
+        `/api/transactions?currency=${defaultCurrency}&limit=${pageSize}&offset=${offset}`
       );
       const data = await response.json();
 
@@ -161,18 +181,68 @@ export default function Transactions() {
           ...t,
           date: new Date(t.date),
         }));
-        setTransactions(parsedTransactions);
-        setFilteredTransactions(parsedTransactions);
+
+        if (append) {
+          // Append to existing transactions
+          setTransactions(prev => [...prev, ...parsedTransactions]);
+        } else {
+          // Replace transactions (first load or refresh)
+          setTransactions(parsedTransactions);
+          setCurrentPage(0);
+        }
+
+        // Update pagination state
+        if (data.pagination) {
+          setHasMore(data.pagination.hasMore);
+          setTotalCount(data.pagination.totalCount);
+        }
       }
     } catch (error) {
       console.error("Error fetching transactions:", error);
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
   };
 
+  const loadMoreTransactions = useCallback(async () => {
+    if (!hasMore || isLoadingMore) return;
+    
+    const nextPage = currentPage + 1;
+    setCurrentPage(nextPage);
+    await fetchTransactions(nextPage, true);
+  }, [hasMore, isLoadingMore, currentPage]);
+
+  // Intersection Observer for infinite scroll
+  const lastTransactionElementRef = useCallback((node: HTMLTableRowElement | null) => {
+    if (isLoadingMore) return;
+    
+    if (observerRef.current) observerRef.current.disconnect();
+    
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        loadMoreTransactions();
+      }
+    }, {
+      // Trigger when the element is 100px from being visible
+      rootMargin: '100px'
+    });
+    
+    if (node) observerRef.current.observe(node);
+  }, [isLoadingMore, hasMore, loadMoreTransactions]);
+
+  // Initial data load
   useEffect(() => {
-    fetchTransactions();
+    fetchTransactions(0, false);
+  }, []);
+
+  useEffect(() => {
+    // Only fetch if no filters are active (to avoid double fetch)
+    if (searchQuery === "" && categoryFilter === "all" && typeFilter === "all") {
+      setCurrentPage(0);
+      setTransactions([]);
+      fetchTransactions(0, false);
+    }
   }, [defaultCurrency]);
 
   // Filter transactions based on search and filters
@@ -202,11 +272,30 @@ export default function Transactions() {
     setFilteredTransactions(filtered);
   }, [transactions, searchQuery, categoryFilter, typeFilter]);
 
+  // Reset pagination when filters change
+  useEffect(() => {
+    if (searchQuery || categoryFilter !== "all" || typeFilter !== "all") {
+      // When filtering, we should fetch fresh data
+      setCurrentPage(0);
+      setTransactions([]);
+      fetchTransactions(0, false);
+    }
+  }, [searchQuery, categoryFilter, typeFilter, defaultCurrency]);
+
+  // Cleanup intersection observer on unmount
+  useEffect(() => {
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, []);
+
   const handleEdit = (transaction: Transaction) => {
     setEditingTransaction(transaction);
     setFormData({
-      amount: Math.abs(transaction.amount).toString(),
-      currency: transaction.originalCurrency || "USD",
+      amount: Math.abs(transaction.originalAmount || transaction.amount).toString(),
+      currency: transaction.originalCurrency || transaction.currency || "USD",
       vendor: transaction.vendor,
       description: transaction.description,
       category: transaction.category,
@@ -225,7 +314,10 @@ export default function Transactions() {
       });
 
       if (response.ok) {
-        await fetchTransactions();
+        // Reset pagination and fetch fresh data
+        setCurrentPage(0);
+        setTransactions([]);
+        await fetchTransactions(0, false);
       }
     } catch (error) {
       console.error("Error deleting transaction:", error);
@@ -261,7 +353,10 @@ export default function Transactions() {
       });
 
       if (response.ok) {
-        await fetchTransactions();
+        // Reset pagination and fetch fresh data
+        setCurrentPage(0);
+        setTransactions([]);
+        await fetchTransactions(0, false);
         setIsEditDialogOpen(false);
         setIsAddDialogOpen(false);
         setEditingTransaction(null);
@@ -426,75 +521,62 @@ export default function Transactions() {
                 <TableHead>Vendor</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Type</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right">Amount ({defaultCurrency})</TableHead>
                 <TableHead className="text-right">Original</TableHead>
                 <TableHead className="w-[70px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTransactions.map((transaction) => (
-                <TableRow key={transaction.id}>
-                  <TableCell>{formatDate(transaction.date, "long")}</TableCell>
-                  <TableCell className="font-medium">
-                    {transaction.description}
-                  </TableCell>
-                  <TableCell>{transaction.vendor}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span>{getCategoryEmoji(transaction.category)}</span>
-                      <span className="text-sm">{transaction.category}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        transaction.type === "income" ? "default" : "secondary"
-                      }
-                    >
-                      {transaction.type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex flex-col items-end">
-                      <span
-                        className={`font-bold ${
-                          transaction.type === "income"
-                            ? "text-green-600"
-                            : "text-red-600"
-                        }`}
-                      >
-                        {transaction.type === "income" ? "+" : "-"}
-                        {formatCurrency(
-                          Math.abs(
-                            transaction.convertedAmount || transaction.amount
-                          ),
-                          { currency: defaultCurrency }
-                        )}
-                      </span>
-                      {transaction.convertedCurrency && (
-                        <span className="text-xs text-muted-foreground">
-                          {transaction.convertedCurrency}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="text-right">
-                      <div
-                        className={`font-medium ${
-                          transaction.type === "income"
-                            ? "text-green-600"
-                            : "text-red-600"
-                        }`}
-                      >
-                        {formatCurrency(
-                          transaction.convertedAmount || transaction.amount,
-                          {
-                            currency:
-                              transaction.convertedCurrency || defaultCurrency,
-                          }
-                        )}
+              {filteredTransactions.map((transaction, index) => {
+                // Add ref to the last few items to trigger loading
+                const isLastItem = index === filteredTransactions.length - 1;
+                const isNearEnd = index >= filteredTransactions.length - 3;
+                
+                return (
+                  <TableRow 
+                    key={transaction.id}
+                    ref={isLastItem ? lastTransactionElementRef : null}
+                  >
+                    <TableCell>{formatDate(transaction.date, "long")}</TableCell>
+                    <TableCell className="font-medium">
+                      {transaction.description}
+                    </TableCell>
+                    <TableCell>{transaction.vendor}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span>{getCategoryEmoji(transaction.category)}</span>
+                        <span className="text-sm">{transaction.category}</span>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          transaction.type === "income" ? "default" : "secondary"
+                        }
+                      >
+                        {transaction.type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-col items-end">
+                        <span
+                          className={`font-bold ${
+                            transaction.type === "income"
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }`}
+                        >
+                          {transaction.type === "income" ? "+" : "-"}
+                          {formatCurrency(
+                            Math.abs(
+                              transaction.convertedAmount || transaction.amount
+                            ),
+                            { currency: defaultCurrency }
+                          )}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
                       <CurrencyInfo
                         originalAmount={transaction.originalAmount}
                         originalCurrency={transaction.originalCurrency}
@@ -508,37 +590,73 @@ export default function Transactions() {
                         conversionFee={transaction.conversionFee}
                         className="text-right"
                       />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => handleEdit(transaction)}
-                        >
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleDelete(transaction.id)}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => handleEdit(transaction)}
+                          >
+                            <Edit className="w-4 h-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(transaction.id)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
+        
+        {/* Infinite Scroll Loading Indicator */}
+        {filteredTransactions.length > 0 && (
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Showing {filteredTransactions.length} transactions
+                {totalCount > 0 && ` of ${totalCount} total`}
+              </div>
+              
+              {isLoadingMore && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground ml-auto">
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  Loading more...
+                </div>
+              )}
+              
+              {hasMore && !isLoadingMore && filteredTransactions.length >= pageSize && (
+                <Button 
+                  onClick={loadMoreTransactions}
+                  variant="ghost" 
+                  size="sm"
+                  className="ml-auto text-xs"
+                >
+                  Load More
+                </Button>
+              )}
+              
+              {!hasMore && filteredTransactions.length > pageSize && (
+                <div className="text-sm text-muted-foreground ml-auto">
+                  No more transactions to load
+                </div>
+              )}
+            </div>
+          </CardContent>
+        )}
       </Card>
 
       {/* Add/Edit Transaction Dialog */}

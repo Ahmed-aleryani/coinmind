@@ -202,16 +202,26 @@ export const transactionDb = {
     const fields = [];
     const values = [];
 
+    // Map camelCase property names to database column names
+    const columnMapping: Record<string, string> = {
+      'originalAmount': 'original_amount',
+      'originalCurrency': 'original_currency',
+      'convertedAmount': 'converted_amount',
+      'convertedCurrency': 'converted_currency',
+      'conversionRate': 'conversion_rate',
+      'conversionFee': 'conversion_fee',
+      'receiptUrl': 'receipt_url'
+    };
+
     Object.entries(updates).forEach(([key, value]) => {
       if (value !== undefined) {
         if (key === 'date') {
           fields.push('date = ?');
           values.push((value as Date).toISOString());
-        } else if (key === 'receiptUrl') {
-          fields.push('receipt_url = ?');
-          values.push(value);
         } else {
-          fields.push(`${key} = ?`);
+          // Use column mapping if available, otherwise use the key as-is
+          const columnName = columnMapping[key] || key;
+          fields.push(`${columnName} = ?`);
           values.push(value);
         }
       }

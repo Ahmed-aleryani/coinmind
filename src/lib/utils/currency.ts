@@ -1,4 +1,4 @@
-const API_URL = "https://api.exchangerate-api.com/v4/latest";
+const API_URL = "https://open.er-api.com/v6/latest";
 
 // Cache rates for 1 hour
 let cachedRates: Record<string, number> = {};
@@ -14,74 +14,176 @@ export async function getExchangeRate(
   from: string,
   to: string
 ): Promise<number> {
+  // Convert to uppercase to handle case sensitivity
+  from = from.toUpperCase();
+  to = to.toUpperCase();
+
+  // If same currency, return 1
+  if (from === to) return 1;
+
   const now = Date.now();
+  
+  // Check cache first
   if (
     cachedBase === from &&
     cachedRates[to] &&
-    now - lastFetch < 60 * 60 * 1000
+    now - lastFetch < 60 * 60 * 1000 // Cache for 1 hour
   ) {
-    console.log(
-      `[getExchangeRate] (CACHED) ${from} -> ${to}: ${cachedRates[to]}`
-    );
+    console.log(`[getExchangeRate] (CACHED) ${from} -> ${to}: ${cachedRates[to]}`);
     return cachedRates[to];
   }
-  const url = `${API_URL}/${from}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Failed to fetch exchange rates");
-  const data = (await res.json()) as { rates: Record<string, number> };
-  cachedRates = data.rates;
-  cachedBase = from;
-  lastFetch = now;
-  if (!cachedRates[to]) throw new Error(`Currency ${to} not supported`);
-  console.log(`[getExchangeRate] ${from} -> ${to}: ${cachedRates[to]}`);
-  return cachedRates[to];
+
+  try {
+    // Fetch latest rates from the API
+    const url = `${API_URL}/${from}`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.result !== 'success') {
+      throw new Error(data['error-type'] || 'Failed to fetch exchange rates');
+    }
+
+    if (!data.rates || !data.rates[to]) {
+      throw new Error(`Currency ${to} not supported`);
+    }
+
+    // Update cache
+    cachedRates = data.rates;
+    cachedBase = from;
+    lastFetch = now;
+
+    const rate = data.rates[to];
+    console.log(`[getExchangeRate] ${from} -> ${to}: ${rate}`);
+    
+    return rate;
+  } catch (error) {
+    console.error('Error in getExchangeRate:', error);
+    throw new Error(`Failed to get exchange rate: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 export async function getGlobalRates(
   base: string = "USD"
 ): Promise<{ rates: Record<string, number>; base: string }> {
+  // Convert to uppercase to handle case sensitivity
+  base = base.toUpperCase();
+  
   const now = Date.now();
+  
+  // Check cache first
   if (
     globalRatesBase === base &&
     Object.keys(globalRates).length > 0 &&
-    now - globalRatesLastFetch < 60 * 60 * 1000
+    now - globalRatesLastFetch < 60 * 60 * 1000 // Cache for 1 hour
   ) {
-    return { rates: globalRates, base: globalRatesBase };
+    console.log(`[getGlobalRates] (CACHED) Returning cached rates for base ${base}`);
+    return { rates: { ...globalRates }, base };
   }
-  const url = `${API_URL}/${base}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Failed to fetch global exchange rates");
-  const data = (await res.json()) as { rates: Record<string, number> };
-  globalRates = data.rates;
-  globalRatesBase = base;
-  globalRatesLastFetch = now;
-  return { rates: globalRates, base: globalRatesBase };
+
+  try {
+    // Fetch latest rates from the API
+    const url = `${API_URL}/${base}`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.result !== 'success') {
+      throw new Error(data['error-type'] || 'Failed to fetch exchange rates');
+    }
+
+    if (!data.rates) {
+      throw new Error('No rates data received from API');
+    }
+
+    // Update cache
+    globalRates = data.rates;
+    globalRatesBase = base;
+    globalRatesLastFetch = now;
+
+    console.log(`[getGlobalRates] Fetched new rates for base ${base}`);
+    return { rates: { ...data.rates }, base };
+  } catch (error) {
+    console.error('Error in getGlobalRates:', error);
+    throw new Error(`Failed to get global rates: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
-// Convert using a global rates table (cross-rate math)
 export function convertWithGlobalRates(
   amount: number,
   from: string,
   to: string,
   rates: Record<string, number>,
-  base: string
+  base: string = "USD"
 ): number {
+  // Convert to uppercase to handle case sensitivity
+  from = from.toUpperCase();
+  to = to.toUpperCase();
+  base = base.toUpperCase();
+  
+  // If same currency, return amount as is
   if (from === to) return amount;
-  if (from === base) {
-    // Direct conversion from base
-    if (!rates[to]) throw new Error(`Currency ${to} not supported in rates`);
-    return amount * rates[to];
+  
+  try {
+    // If converting from base currency
+    if (from === base) {
+      if (!rates[to]) throw new Error(`Target currency ${to} not found in rates`);
+      return amount * rates[to];
+    }
+    
+    // If converting to base currency
+    if (to === base) {
+      if (!rates[from]) throw new Error(`Source currency ${from} not found in rates`);
+      return amount / rates[from];
+    }
+    
+    // Cross-currency conversion through base currency
+    if (!rates[from] || !rates[to]) {
+      throw new Error(`One or both currencies not found in rates (${from}, ${to})`);
+    }
+    
+    const result = (amount / rates[from]) * rates[to];
+    console.log(`[convertWithGlobalRates] Converted ${amount} ${from} -> ${result} ${to} (via ${base})`);
+    return result;
+  } catch (error) {
+    console.error(`Error in convertWithGlobalRates for ${amount} ${from} to ${to}:`, error);
+    throw new Error(`Failed to convert with global rates: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  if (to === base) {
-    // Convert to base
-    if (!rates[from])
-      throw new Error(`Currency ${from} not supported in rates`);
-    return amount / rates[from];
+}
+
+export async function batchConvertAmounts(
+  amounts: number[],
+  from: string,
+  to: string
+): Promise<number[]> {
+  // Convert to uppercase to handle case sensitivity
+  from = from.toUpperCase();
+  to = to.toUpperCase();
+  
+  // If same currency, return amounts as is
+  if (from === to) return [...amounts];
+  
+  try {
+    // Get the exchange rate once and apply to all amounts
+    const rate = await getExchangeRate(from, to);
+    const results = amounts.map(amount => {
+      const result = amount * rate;
+      console.log(`[batchConvertAmounts] Converted ${amount} ${from} -> ${result} ${to}`);
+      return result;
+    });
+    return results;
+  } catch (error) {
+    console.error(`Error in batchConvertAmounts for ${from} to ${to}:`, error);
+    throw new Error(`Failed to batch convert amounts: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  // Cross-rate: from -> base -> to
-  if (!rates[from] || !rates[to])
-    throw new Error(`Currency ${from} or ${to} not supported in rates`);
-  return (amount / rates[from]) * rates[to];
 }
 
 export async function convertAmount(
@@ -89,98 +191,33 @@ export async function convertAmount(
   from: string,
   to: string
 ): Promise<number> {
+  // Convert to uppercase to handle case sensitivity
+  from = from.toUpperCase();
+  to = to.toUpperCase();
+  
+  // If same currency, return amount as is
   if (from === to) return amount;
-  const rate = await getExchangeRate(from, to);
-  return amount * rate;
+  
+  try {
+    const rate = await getExchangeRate(from, to);
+    const result = amount * rate;
+    console.log(`[convertAmount] Converted ${amount} ${from} -> ${result} ${to}`);
+    return result;
+  } catch (error) {
+    console.error(`Error converting ${amount} ${from} to ${to}:`, error);
+    throw new Error(`Failed to convert amount: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 export async function getSupportedCurrencies(): Promise<string[]> {
-  const res = await fetch(API_URL);
-  if (!res.ok) throw new Error("Failed to fetch supported currencies");
-  const data = (await res.json()) as { rates: Record<string, number> };
-  return Object.keys(data.rates);
-}
-
-// Batch convert an array of {amount, from} to a target currency
-export async function batchConvertAmounts(
-  items: { amount: number; from: string }[],
-  to: string
-): Promise<number[]> {
-  // Group by source currency
-  const groups: Record<string, { idx: number; amount: number }[]> = {};
-  items.forEach((item, idx) => {
-    if (!groups[item.from]) groups[item.from] = [];
-    groups[item.from].push({ idx, amount: item.amount });
-  });
-  // Fetch all needed rates in one call per source currency
-  const now = Date.now();
-  const results: number[] = new Array(items.length);
-  for (const from in groups) {
-    if (from === to) {
-      groups[from].forEach(({ idx, amount }) => {
-        results[idx] = amount;
-      });
-      continue;
-    }
-    // Use cached rates if available and fresh
-    if (
-      cachedBase === from &&
-      cachedRates[to] &&
-      now - lastFetch < 60 * 60 * 1000
-    ) {
-      const rate = cachedRates[to];
-      groups[from].forEach(({ idx, amount }) => {
-        results[idx] = amount * rate;
-      });
-      continue;
-    }
-    // Fetch rates for this base
-    const url = `${API_URL}/${from}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Failed to fetch exchange rates");
-    const data = (await res.json()) as { rates: Record<string, number> };
-    cachedRates = data.rates;
-    cachedBase = from;
-    lastFetch = now;
-    const rate = cachedRates[to];
-    if (!rate) throw new Error(`Currency ${to} not supported for base ${from}`);
-    groups[from].forEach(({ idx, amount }) => {
-      results[idx] = amount * rate;
-    });
+  try {
+    const { rates } = await getGlobalRates("USD");
+    // Include base currency (USD) in the result
+    const currencies = Array.from(new Set([...Object.keys(rates), "USD"])).sort();
+    console.log(`[getSupportedCurrencies] Found ${currencies.length} supported currencies`);
+    return currencies;
+  } catch (error) {
+    console.error('Error fetching supported currencies:', error);
+    throw new Error(`Failed to get supported currencies: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  return results;
-}
-
-// DEBUG: Direct test for currency conversion utility
-if (
-  typeof process !== "undefined" &&
-  process.argv &&
-  process.argv[1] &&
-  process.argv[1].endsWith("currency.ts")
-) {
-  (async () => {
-    const from = "USD";
-    const to = "SAR";
-    const amount = 50;
-    const rate = await getExchangeRate(from, to);
-    const converted = await convertAmount(amount, from, to);
-    console.log(
-      `[TEST] 50 ${from} to ${to}: rate=${rate}, converted=${converted}`
-    );
-  })();
-}
-
-// TEMP: Conditional test for currency conversion utility (runs only in development)
-if (process.env.NODE_ENV === "development") {
-  (async () => {
-    console.log("[TEST] Running direct currency conversion test...");
-    const from = "USD";
-    const to = "SAR";
-    const amount = 50;
-    const rate = await getExchangeRate(from, to);
-    const converted = await convertAmount(amount, from, to);
-    console.log(
-      `[TEST] 50 ${from} to ${to}: rate=${rate}, converted=${converted}`
-    );
-  })();
 }

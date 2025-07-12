@@ -58,23 +58,28 @@ export function formatAmountWithColor(amount: number): {
 
 /**
  * Format dates for display
+ * Fixed to handle timezone issues properly for transaction dates
  */
 export function formatDate(date: Date, style: 'short' | 'medium' | 'long' | 'relative' = 'medium'): string {
   if (!date || isNaN(date.getTime())) return 'Invalid date';
 
+  // Convert to local date to avoid timezone issues with transaction dates
+  // This ensures that if a transaction was created on July 11, it shows as July 11
+  const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
   switch (style) {
     case 'short':
-      return format(date, 'MM/dd');
+      return format(localDate, 'MM/dd');
     case 'medium':
-      return format(date, 'MMM dd, yyyy');
+      return format(localDate, 'MMM dd, yyyy');
     case 'long':
-      return format(date, 'EEEE, MMMM dd, yyyy');
+      return format(localDate, 'EEEE, MMMM dd, yyyy');
     case 'relative':
-      if (isToday(date)) return 'Today';
-      if (isYesterday(date)) return 'Yesterday';
-      return formatDistanceToNow(date, { addSuffix: true });
+      if (isToday(localDate)) return 'Today';
+      if (isYesterday(localDate)) return 'Yesterday';
+      return formatDistanceToNow(localDate, { addSuffix: true });
     default:
-      return format(date, 'MMM dd, yyyy');
+      return format(localDate, 'MMM dd, yyyy');
   }
 }
 
