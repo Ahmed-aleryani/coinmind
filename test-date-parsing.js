@@ -1,12 +1,26 @@
 // Simple test script to verify date parsing
 const { parseTransactionText } = require('./dist/lib/api/gemini.js');
 
+function computeRelativeDate(offsetDays) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return date.toISOString().split('T')[0];
+}
+
+function computeLastMonday() {
+  const date = new Date();
+  const day = date.getDay();
+  const offset = day === 0 ? -6 : 1 - day; // Adjust for Sunday (0) or other days
+  date.setDate(date.getDate() + offset);
+  return date.toISOString().split('T')[0];
+}
+
 async function testDateParsing() {
   const testCases = [
-    { input: 'I received 500$ salary 2 days ago', expectedDate: '2025-07-09' },
-    { input: 'Paid 50$ for dinner yesterday', expectedDate: '2025-07-10' },
-    { input: 'Got 1000$ payment last Monday', expectedDate: '2025-07-07' },
-    { input: 'Spent 20$ on coffee today', expectedDate: '2025-07-11' },
+    { input: 'I received 500$ salary 2 days ago', expectedDate: computeRelativeDate(-2) },
+    { input: 'Paid 50$ for dinner yesterday', expectedDate: computeRelativeDate(-1) },
+    { input: 'Got 1000$ payment last Monday', expectedDate: computeLastMonday() },
+    { input: 'Spent 20$ on coffee today', expectedDate: computeRelativeDate(0) },
   ];
 
   console.log('\n=== Testing Date Parsing ===');
