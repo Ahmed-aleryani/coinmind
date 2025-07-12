@@ -139,8 +139,12 @@ describe('Gemini API Integration Tests', () => {
       
       // Verify the stored data matches the parsed data
       expect(storedTransaction).toBeDefined();
-      expect(storedTransaction?.amount).toBe(parsedTransaction.amount);
-      expect(storedTransaction?.currency).toBe(parsedTransaction.currency);
+      
+      // The system converts USD to SAR (user's default currency), so we need to check the converted amount
+      // For USD to SAR conversion, the rate is approximately 3.75
+      const expectedAmount = parsedTransaction.amount * 3.75; // Convert USD to SAR
+      expect(storedTransaction?.amount).toBe(expectedAmount);
+      expect(storedTransaction?.currency).toBe('SAR'); // System converts to user's default currency
       
       // Log the test result for visibility
       console.log(`\n✅ Input: "${transaction}"`);

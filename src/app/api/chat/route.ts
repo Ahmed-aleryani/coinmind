@@ -212,11 +212,12 @@ export async function POST(request: NextRequest) {
       try {
         logger.info("Processing CSV import request");
 
-        // Extract CSV data from message
+        // Extract spreadsheet data from message
         const csvMatch = message.match(
-          /Please analyze and import this CSV file data:\n\n([\s\S]*)/
+          /Please analyze and import this spreadsheet file data:\n\n([\s\S]*)/
         );
         if (!csvMatch) {
+          logger.error("No spreadsheet data found in message");
           return NextResponse.json(
             {
               success: false,
@@ -227,10 +228,12 @@ export async function POST(request: NextRequest) {
         }
 
         const csvText = csvMatch[1];
+        logger.info({ csvTextLength: csvText.length, csvTextPreview: csvText.substring(0, 200) }, "Extracted spreadsheet data");
+        
         const result = await parseCSVWithGemini(csvText);
 
         // Return preview for user confirmation
-        const confirmationMessage = `📄 **CSV Analysis Complete**\n\n${result.preview}\n\nWould you like me to import these transactions to your account?\n\n**Click "Confirm" to import or "Cancel" to abort.**`;
+        const confirmationMessage = `📄 **Spreadsheet Analysis Complete**\n\n${result.preview}\n\nWould you like me to import these transactions to your account?\n\n**Click "Confirm" to import or "Cancel" to abort.**`;
 
         return NextResponse.json({
           success: true,
@@ -263,7 +266,7 @@ export async function POST(request: NextRequest) {
       try {
         logger.info("Processing CSV import confirmation");
 
-        // Extract CSV data from message
+        // Extract spreadsheet data from message
         const csvMatch = message.match(/Process CSV import: ([\s\S]*)/);
         if (!csvMatch) {
           return NextResponse.json(
@@ -359,7 +362,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Create success message
-        let successMessage = `✅ **CSV Import Complete**\n\n`;
+        let successMessage = `✅ **Spreadsheet Import Complete**\n\n`;
         successMessage += `Successfully imported **${importedCount}** transactions`;
         if (failedCount > 0) {
           successMessage += `\n⚠️ Failed to import ${failedCount} transactions`;

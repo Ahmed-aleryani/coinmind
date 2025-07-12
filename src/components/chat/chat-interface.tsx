@@ -17,6 +17,8 @@ import {
 import { cn } from "@/lib/utils";
 import { formatMessageTime } from "@/lib/utils/formatters";
 import { detectLanguage } from "@/lib/utils/language-detection";
+import { parseSpreadsheetFile } from "@/lib/utils/parsers";
+
 import TextareaAutosize from "react-textarea-autosize";
 import { Markdown } from "@/components/ui/markdown";
 
@@ -268,7 +270,7 @@ function ChatInput({
               size="icon"
               disabled={isLoading}
               onClick={onCSVImport}
-              title="Import CSV file"
+              title="Import CSV or Excel file"
             >
               <FileSpreadsheet className="h-4 w-4" />
             </Button>
@@ -475,11 +477,11 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     if (!content.trim() || isLoading) return;
 
     // Handle CSV import confirmations
-    if (content.includes("Yes, import all transactions")) {
+    if (content.includes("Confirm Import")) {
       await handleCSVConfirmation(true);
       return;
     }
-    if (content.includes("No, cancel import")) {
+    if (content.includes("Cancel Import")) {
       await handleCSVConfirmation(false);
       return;
     }
@@ -736,8 +738,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
       setMessages((prev) => [...prev, assistantMessage]);
 
-      // Store receipt data for confirmation
-      setPendingReceiptData(receiptData);
+              // Store receipt data for confirmation in window object
+        (window as WindowWithSpeechRecognition).pendingReceiptData = receiptData;
       // No receiptSaveMode logic
     } catch (error) {
       console.error("Error processing receipt:", error);
@@ -768,11 +770,13 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     // Reset the input value to allow selecting the same file again
     event.target.value = "";
 
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      console.log("File is not a CSV");
+    // Validate file type
+    const fileName = file.name.toLowerCase();
+    if (!fileName.endsWith(".csv") && !fileName.endsWith(".xlsx") && !fileName.endsWith(".xls")) {
+      console.log("File is not a supported spreadsheet format");
       const errorMessage: Message = {
         id: Date.now().toString(),
-        content: "Please select a valid CSV file.",
+        content: "Please select a valid CSV or Excel file (.csv, .xlsx, .xls).",
         sender: "assistant",
         timestamp: new Date(),
         type: "error",
@@ -782,9 +786,10 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     }
 
     // Add user message about the upload
+    const fileType = fileName.endsWith('.csv') ? 'CSV' : 'Excel';
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: `📄 Uploading CSV file: ${file.name}`,
+      content: `📄 Uploading ${fileType} file: ${file.name}`,
       sender: "user",
       timestamp: new Date(),
       type: "text",
@@ -793,17 +798,30 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     setIsLoading(true);
 
     try {
-      // Read CSV file as text
-      const csvText = await file.text();
+      let fileData: string;
+      
+      if (fileName.endsWith('.csv')) {
+        // Read CSV file as text
+        fileData = await file.text();
+      } else {
+        // For Excel files, parse and convert to CSV format
+        const preview = await parseSpreadsheetFile(file);
+        const allData = [preview.headers, ...preview.rows];
+        
+        // Convert to CSV string format
+        fileData = allData.map(row => 
+          row.map(cell => `"${cell || ''}"`).join(',')
+        ).join('\n');
+      }
 
-      // Send CSV data to chat API for processing
+      // Send spreadsheet data to chat API for processing
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: `Please analyze and import this CSV file data:\n\n${csvText}`,
+          message: `Please analyze and import this spreadsheet file data:\n\n${fileData}`,
           type: "csv_import",
         }),
       });
@@ -821,22 +839,22 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         };
         setMessages((prev) => [...prev, assistantMessage]);
 
-        // Store CSV data for confirmation if needed
+        // Store spreadsheet data for confirmation if needed
         if (data.data.requiresConfirmation) {
           (window as WindowWithSpeechRecognition).pendingCSVImport = {
-            csvText,
+            csvText: fileData,
           };
         }
       } else {
         throw new Error(data.error || "Failed to process CSV file");
       }
     } catch (error) {
-      console.error("Error processing CSV:", error);
+      console.error("Error processing spreadsheet:", error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: `❌ Error processing CSV file: ${
+        content: `❌ Error processing spreadsheet file: ${
           error instanceof Error ? error.message : "Unknown error"
-        }. Please make sure your file is a valid CSV.`,
+        }. Please make sure your file is a valid CSV or Excel file.`,
         sender: "assistant",
         timestamp: new Date(),
         type: "error",
@@ -855,7 +873,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     if (!confirm) {
       const cancelMessage: Message = {
         id: Date.now().toString(),
-        content: "❌ CSV import cancelled.",
+        content: "❌ Spreadsheet import cancelled.",
         sender: "assistant",
         timestamp: new Date(),
         type: "text",
@@ -893,7 +911,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         };
         setMessages((prev) => [...prev, assistantMessage]);
       } else {
-        throw new Error(data.error || "Failed to import CSV");
+        throw new Error(data.error || "Failed to import spreadsheet");
       }
 
       // Clean up
@@ -902,7 +920,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       console.error("Error importing CSV:", error);
       const errorMessage: Message = {
         id: Date.now().toString(),
-        content: `❌ Error importing CSV: ${
+        content: `❌ Error importing spreadsheet: ${
           error instanceof Error ? error.message : "Unknown error"
         }`,
         sender: "assistant",
@@ -1005,7 +1023,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         type="file"
         ref={fileInputRef}
         onChange={handleFileUpload}
-        accept=".csv"
+        accept=".csv,.xlsx,.xls"
         style={{ display: "none" }}
       />
       <MessageList

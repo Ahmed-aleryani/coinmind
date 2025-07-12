@@ -921,7 +921,7 @@ Respond in ${userLanguage} with specific numbers and insights. Format currency a
 }
 
 /**
- * Parse CSV data using Gemini 2.5 Pro Preview for fast and accurate processing
+ * Parse spreadsheet data (CSV or XLSX) using Gemini 2.5 Pro Preview for fast and accurate processing
  */
 export async function parseCSVWithGemini(csvText: string): Promise<{
   preview: string;
@@ -971,9 +971,9 @@ Rules:
     let response;
     let modelUsed = MODEL_NAMES.PRO;
     
-    try {
-      // Attempt CSV parsing with Pro model
-      response = await getAiClient().models.generateContent({
+          try {
+        // Attempt CSV parsing with Pro model
+        response = await getAiClient().models.generateContent({
         model: MODEL_NAMES.PRO,
         contents: [{
           role: 'user',
