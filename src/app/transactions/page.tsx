@@ -117,7 +117,7 @@ export default function Transactions() {
   
   // Infinite scroll refs
   const observerRef = useRef<IntersectionObserver | null>(null);
-  const loadingTriggerRef = useRef<HTMLDivElement | null>(null);
+// Removed unused loadingTriggerRef variable
   
   const [formData, setFormData] = useState({
     amount: "",
