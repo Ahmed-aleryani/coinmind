@@ -49,8 +49,6 @@ Response examples:
 - "I've noticed your entertainment spending increased by 20% this month. Would you like to review your budget or set a limit?"
 - "Would you like to set a savings goal or receive tips on reducing expenses in a specific category?"
 
-**IMPORTANT**: The user's message language determines your response language. Match their language exactly.`;
-
 // Currency formatting is now handled by the unified CurrencyFormatter utility
 
 // Helper functions removed - LLM handles time period parsing naturally
