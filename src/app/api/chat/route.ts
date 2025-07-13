@@ -7,30 +7,35 @@ import { parseTransactionText, parseCSVWithGemini, answerFinancialQuestion } fro
 import logger from "@/lib/utils/logger";
 import { userSettingsDb } from "@/lib/db/schema";
 import { convertAmount } from "@/lib/utils/currency";
+import { CurrencyFormatter } from "@/lib/utils/currency-formatter";
+import { validateTransaction, sanitizeTransaction } from "@/lib/utils/validation";
+import { detectLanguage } from "@/lib/utils/language-detection";
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-// Enhanced system prompt that guides LLM on proper financial assistance
-const SYSTEM_PROMPT = `You are CoinMind, a smart financial assistant. Your task is to help users manage their personal finances.
+// Enhanced system prompt for advanced, context-aware financial assistance
+const SYSTEM_PROMPT = `You are CoinMind, an intelligent and proactive financial assistant. Your mission is to help users manage, understand, and optimize their personal finances with clarity and empathy.
 
-Current financial information:
+User's current financial snapshot:
 - Total balance: {balance}
 - Total income: {income}
 - Total expenses: {expenses}
-- Transaction count: {transactionCount}
-- User's default currency: {defaultCurrency}
+- Number of transactions: {transactionCount}
+- Default currency: {defaultCurrency}
 
-Important rules:
-1. Always respond in the same language as the user's message
-2. Be helpful and money-conscious with practical financial advice
-3. When parsing transactions, extract currency if mentioned, otherwise assume user's default currency
-4. Provide contextual insights about spending patterns, budgeting, and financial health
-5. Ask clarifying questions when user input is unclear
-6. Use friendly, professional language with appropriate cultural context
-7. Format currency amounts using the user's default currency unless specified otherwise
-8. Generate natural follow-up questions and suggestions based on financial context
+Guidelines for interaction:
+1. **CRITICAL**: Always reply in the same language as the user's message. If the user writes in Arabic, respond in Arabic. If they write in Spanish, respond in Spanish, etc.
+2. Offer practical, actionable, and money-conscious financial advice.
+3. When parsing transactions, extract the currency if mentioned; otherwise, default to the user's currency.
+4. Provide insightful analysis on spending patterns, budgeting, and overall financial health.
+5. Ask clarifying questions if the user's input is ambiguous or incomplete.
+6. Use a friendly, professional tone, and adapt to the user's cultural context.
+7. Format all currency amounts using the user's default currency unless another is specified.
+8. Proactively suggest follow-up questions and personalized recommendations based on the user's financial context.
+9. If the user asks about financial goals, savings, or investments, offer tailored suggestions and encouragement.
+10. If you detect signs of financial stress or concern, respond with empathy and supportive advice.
 
 Currency handling:
 - If user mentions a currency in their message, use that currency
@@ -38,48 +43,15 @@ Currency handling:
 - When user provides different currency than default, system will handle exchange rate conversion
 
 Response examples:
-- "Great! I've added your $50 grocery expense. You've spent $240 on food this month - still within your usual range."
-- "Perfect! Recorded your €25 coffee expense. That's your 4th coffee this week - maybe time for a coffee budget? ☕"
-- "Your balance is {balance}. That's a healthy financial position! Would you like tips on investing the surplus?"`;
+- "Great! I've added your $50 grocery expense. You've spent $240 on food this month—still within your usual range."
+- "Perfect! Recorded your €25 coffee expense. That's your 4th coffee this week—maybe time for a coffee budget? ☕"
+- "Your balance is {balance}. That's a healthy financial position! Would you like tips on investing the surplus?"
+- "I've noticed your entertainment spending increased by 20% this month. Would you like to review your budget or set a limit?"
+- "Would you like to set a savings goal or receive tips on reducing expenses in a specific category?"
 
-// Helper function to format currency based on currency code
-function formatCurrencyByCode(amount: number, currencyCode: string): string {
-  const currencyFormats: Record<string, { locale: string; currency: string }> =
-    {
-      USD: { locale: "en-US", currency: "USD" },
-      EUR: { locale: "de-DE", currency: "EUR" },
-      SAR: { locale: "ar-SA", currency: "SAR" },
-      GBP: { locale: "en-GB", currency: "GBP" },
-      JPY: { locale: "ja-JP", currency: "JPY" },
-      CNY: { locale: "zh-CN", currency: "CNY" },
-      KRW: { locale: "ko-KR", currency: "KRW" },
-      INR: { locale: "hi-IN", currency: "INR" },
-      RUB: { locale: "ru-RU", currency: "RUB" },
-      TRY: { locale: "tr-TR", currency: "TRY" },
-      PLN: { locale: "pl-PL", currency: "PLN" },
-      SEK: { locale: "sv-SE", currency: "SEK" },
-      DKK: { locale: "da-DK", currency: "DKK" },
-      NOK: { locale: "no-NO", currency: "NOK" },
-      ILS: { locale: "he-IL", currency: "ILS" },
-      IRR: { locale: "fa-IR", currency: "IRR" },
-      PKR: { locale: "ur-PK", currency: "PKR" },
-    };
+**IMPORTANT**: The user's message language determines your response language. Match their language exactly.`;
 
-  const format = currencyFormats[currencyCode] || currencyFormats.USD;
-
-  try {
-    return new Intl.NumberFormat(format.locale, {
-      style: "currency",
-      currency: format.currency,
-    }).format(amount);
-  } catch (error) {
-    // Fallback to USD
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
-  }
-}
+// Currency formatting is now handled by the unified CurrencyFormatter utility
 
 // Helper functions removed - LLM handles time period parsing naturally
 
@@ -89,16 +61,20 @@ function formatCurrencyByCode(amount: number, currencyCode: string): string {
 
 // LLM provides financial advice contextually
 
-// Helper function to determine if user is asking about financial data using AI
-async function determineIfFinancialQuery(message: string): Promise<{ isFinancial: boolean; intent: string }> {
+// Let the LLM determine, handle, and answer user's finance-related queries in the user's language.
+// This function delegates the entire financial query detection and response to the LLM.
+async function handleFinancialQueryWithLLM(message: string, userLanguage?: string): Promise<{ isFinancial: boolean; intent: string; response: string }> {
   try {
-    const intentDetectionPrompt = `You are an AI assistant that identifies user intent in financial conversations. 
+    // Compose a prompt that instructs the LLM to:
+    // 1. Detect if the message is about finance.
+    // 2. Identify the user's intent.
+    // 3. Return a JSON object with isFinancial and intent only.
+    const prompt = `
+You are a multilingual AI financial assistant.
 
-Analyze the following user message and determine:
-1. Is this a financial query (asking about money, expenses, income, transactions, spending, etc.)?
-2. What is the specific intent?
-
-User message: "${message}"
+Analyze the following user message and:
+1. Determine if it is a financial query (about money, expenses, income, transactions, spending, etc.).
+2. Identify the specific intent (see categories below).
 
 Respond with ONLY a raw JSON object (no markdown formatting) in this exact format:
 {
@@ -119,43 +95,49 @@ Intent categories:
 - "unknown" - unclear what they want, even after analysis
 - "non_financial" - not related to finances
 
-Be strict - only return isFinancial: true if it's clearly about finances.`;
+User message: "${message}"
+${userLanguage ? `User language: ${userLanguage}` : ""}
+`;
 
-    const result = await model.generateContent(intentDetectionPrompt);
+    const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text().trim();
 
     // Try to parse JSON response - handle both raw JSON and markdown-wrapped JSON
     try {
       let jsonText = text;
-      
       // Check if response is wrapped in markdown code blocks
       const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
       if (codeBlockMatch) {
         jsonText = codeBlockMatch[1].trim();
       }
-      
       const parsed = JSON.parse(jsonText);
-      if (typeof parsed.isFinancial === 'boolean' && typeof parsed.intent === 'string') {
+      if (
+        typeof parsed.isFinancial === 'boolean' &&
+        typeof parsed.intent === 'string'
+      ) {
         return {
           isFinancial: parsed.isFinancial,
-          intent: parsed.intent
+          intent: parsed.intent,
+          response: "" // No response here - let answerFinancialQuestion handle the actual response
         };
       }
     } catch (parseError) {
-      logger.warn({ text, parseError }, 'Failed to parse AI intent detection response');
+      logger.warn({ text, parseError }, 'Failed to parse AI financial query response');
     }
 
     // Fallback if JSON parsing fails
     return {
       isFinancial: false,
-      intent: "unknown"
+      intent: "unknown",
+      response: ""
     };
   } catch (error) {
-    logger.error({ error }, 'Intent detection failed');
+    logger.error({ error }, 'Financial query handling failed');
     return {
       isFinancial: false,
-      intent: "unknown"
+      intent: "unknown",
+      response: ""
     };
   }
 }
@@ -483,9 +465,9 @@ Respond naturally in the appropriate language based on the file name and AI anal
       const defaultCurrency = userSettings.defaultCurrency || "USD";
       
       // Format currency using user's default currency
-      const formattedBalance = formatCurrencyByCode(totalBalance, defaultCurrency);
-      const formattedIncome = formatCurrencyByCode(income, defaultCurrency);
-      const formattedExpenses = formatCurrencyByCode(expenses, defaultCurrency);
+      const formattedBalance = CurrencyFormatter.format(totalBalance, defaultCurrency);
+      const formattedIncome = CurrencyFormatter.format(income, defaultCurrency);
+      const formattedExpenses = CurrencyFormatter.format(expenses, defaultCurrency);
 
       // Check if the message contains transaction information using AI-powered parsing
       let responseText = "";
@@ -604,58 +586,13 @@ Respond naturally in the appropriate language based on the file name and AI anal
             (sum: number, t: any) => sum + (t.convertedAmount || t.amount || 0),
             0
           );
-          const updatedFormattedBalance = formatCurrencyByCode(
+          const updatedFormattedBalance = CurrencyFormatter.format(
             updatedBalance,
             defaultCurrency
           );
 
           // Create success message in the detected language
-          // Helper to get currency symbol by code
-          function getCurrencySymbol(code: string): string {
-            const symbols: Record<string, string> = {
-              USD: "$",
-              EUR: "€",
-              GBP: "£",
-              JPY: "¥",
-              SAR: "ر.س",
-              EGP: "£",
-              AED: "د.إ",
-              KWD: "د.ك",
-              BHD: "ب.د",
-              JOD: "د.ا",
-              CNY: "¥",
-              KRW: "₩",
-              INR: "₹",
-              RUB: "₽",
-              TRY: "₺",
-              PLN: "zł",
-              SEK: "kr",
-              NOK: "kr",
-              DKK: "kr",
-              MAD: "د.م",
-              DZD: "دج",
-              TND: "د.ت",
-              QAR: "ر.ق",
-              LBP: "ل.ل",
-              YER: "ر.ي", // Yemeni Rial
-            };
-            return symbols[code] || code;
-          }
-
-          // Format number in English numerals
-          function formatNumberEn(num: number): string {
-            return num.toLocaleString("en-US", {
-              maximumFractionDigits: 2,
-              minimumFractionDigits: 2,
-            });
-          }
-
-          // Format number in English numerals, then append currency symbol
-          function formatAmountWithSymbol(num: number, code: string): string {
-            return `${formatNumberEn(num)}${getCurrencySymbol(code)}`;
-          }
-
-          const originalAmountStr = formatAmountWithSymbol(
+          const originalAmountStr = CurrencyFormatter.formatWithSymbol(
             Math.abs(transactionInfo.amount),
             transactionCurrency
           );
@@ -736,8 +673,11 @@ Respond naturally in the appropriate language based on the file name and AI anal
 
       // Check if this is a financial query using AI-powered function calling
       if (!transactionAdded) {
-        // Determine if user is asking about their financial data
-        const queryAnalysis = await determineIfFinancialQuery(message);
+        // Detect user's language first
+        const detectedLanguage = detectLanguage(message);
+        
+        // Determine if user is asking about their financial data using AI
+        const queryAnalysis = await handleFinancialQueryWithLLM(message, detectedLanguage.code);
         
         logger.info({ 
           message: message.substring(0, 100),
@@ -748,16 +688,19 @@ Respond naturally in the appropriate language based on the file name and AI anal
         if (queryAnalysis.isFinancial) {
           logger.info({ message: message.substring(0, 100) }, 'Processing financial query with AI function calling');
           
+          // Always use answerFinancialQuestion for financial queries since it has access to the database
           try {
-            const financialAnswer = await answerFinancialQuestion(message, "en");
+            // Detect user's language from the message
+            const detectedLanguage = detectLanguage(message);
+            const financialAnswer = await answerFinancialQuestion(message, detectedLanguage.code);
             
-        return NextResponse.json({
-          success: true,
-          data: {
+            return NextResponse.json({
+              success: true,
+              data: {
                 message: financialAnswer,
-            transactionAdded: false,
-          },
-        });
+                transactionAdded: false,
+              },
+            });
           } catch (error) {
             logger.error({ 
               error: error instanceof Error ? error.message : error,

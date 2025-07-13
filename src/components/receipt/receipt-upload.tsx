@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Upload, FileText, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { ProcessedReceipt } from "@/lib/types/transaction";
+import { CurrencyFormatter } from "@/lib/utils/currency-formatter";
 
 export function ReceiptUpload() {
   const [isUploading, setIsUploading] = useState(false);
@@ -16,6 +17,7 @@ export function ReceiptUpload() {
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewUrlRef = useRef<string | null>(null);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -119,12 +121,7 @@ export function ReceiptUpload() {
     }
   };
 
-  const formatCurrency = (amount: number, currency: string) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currency,
-    }).format(amount);
-  };
+  // Currency formatting is now handled by CurrencyFormatter
 
   return (
     <div className="space-y-6">
@@ -224,7 +221,7 @@ export function ReceiptUpload() {
               <div>
                 <Label className="text-sm font-medium">Total</Label>
                 <p className="text-sm font-medium">
-                  {formatCurrency(receiptData.total, receiptData.currency)}
+                  {CurrencyFormatter.format(receiptData.total, receiptData.currency)}
                 </p>
               </div>
             </div>
@@ -236,7 +233,7 @@ export function ReceiptUpload() {
                   {receiptData.lineItems.map((item, index) => (
                     <div key={index} className="flex justify-between text-sm">
                       <span>{item.description}</span>
-                      <span>{formatCurrency(item.subtotal, receiptData.currency)}</span>
+                      <span>{CurrencyFormatter.format(item.subtotal, receiptData.currency)}</span>
                     </div>
                   ))}
                 </div>
@@ -250,7 +247,7 @@ export function ReceiptUpload() {
                   {receiptData.splits.map((split, index) => (
                     <div key={index} className="flex justify-between text-sm">
                       <span>{split.person}</span>
-                      <span>{formatCurrency(split.amount, receiptData.currency)}</span>
+                      <span>{CurrencyFormatter.format(split.amount, receiptData.currency)}</span>
                     </div>
                   ))}
                 </div>

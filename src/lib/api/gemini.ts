@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { ParsedTransactionText, ReceiptData, TransactionCategory } from '../types/transaction';
 import { transactionDb, initDatabase } from '../db/schema';
 import { formatCurrency } from '../utils/formatters';
-import { detectLanguage, formatCurrencyByLanguage, extractCurrencyAmount } from '../utils/language-detection';
+import { detectLanguage, extractCurrencyAmount } from '../utils/language-detection';
 import logger from '../utils/logger';
 
 // Lazy-loaded Gemini AI client
@@ -916,7 +916,31 @@ Respond in ${userLanguage} with specific numbers and insights. Format currency a
       question: question.substring(0, 100)
     }, 'Financial question processing failed');
     
-    return `I apologize, but I encountered an error while analyzing your financial data. Please try rephrasing your question or try again later.`;
+    // Return error message in the user's language
+    const errorMessages: Record<string, string> = {
+      'ar': 'عذراً، واجهت خطأ أثناء تحليل بياناتك المالية. يرجى إعادة صياغة سؤالك أو المحاولة مرة أخرى لاحقاً.',
+      'en': 'I apologize, but I encountered an error while analyzing your financial data. Please try rephrasing your question or try again later.',
+      'es': 'Lo siento, pero encontré un error al analizar tus datos financieros. Por favor, reformula tu pregunta o inténtalo de nuevo más tarde.',
+      'fr': 'Je m\'excuse, mais j\'ai rencontré une erreur lors de l\'analyse de vos données financières. Veuillez reformuler votre question ou réessayer plus tard.',
+      'de': 'Entschuldigung, aber ich habe einen Fehler bei der Analyse Ihrer Finanzdaten festgestellt. Bitte formulieren Sie Ihre Frage um oder versuchen Sie es später erneut.',
+      'zh': '抱歉，我在分析您的财务数据时遇到了错误。请重新表述您的问题或稍后再试。',
+      'ja': '申し訳ございませんが、財務データの分析中にエラーが発生しました。質問を言い換えるか、後でもう一度お試しください。',
+      'ko': '죄송합니다. 재무 데이터를 분석하는 중에 오류가 발생했습니다. 질문을 다시 작성하거나 나중에 다시 시도해 주세요.',
+      'ru': 'Извините, но я столкнулся с ошибкой при анализе ваших финансовых данных. Пожалуйста, переформулируйте ваш вопрос или попробуйте позже.',
+      'hi': 'माफ़ कीजिए, लेकिन आपके वित्तीय डेटा का विश्लेषण करते समय मुझे एक त्रुटि का सामना करना पड़ा। कृपया अपना प्रश्न पुनः तैयार करें या बाद में पुनः प्रयास करें।',
+      'tr': 'Özür dilerim, ancak finansal verilerinizi analiz ederken bir hata ile karşılaştım. Lütfen sorunuzu yeniden ifade edin veya daha sonra tekrar deneyin.',
+      'nl': 'Het spijt me, maar ik heb een fout ondervonden bij het analyseren van uw financiële gegevens. Probeer uw vraag anders te formuleren of probeer het later opnieuw.',
+      'pl': 'Przepraszam, ale napotkałem błąd podczas analizowania Twoich danych finansowych. Spróbuj przeformułować swoje pytanie lub spróbuj ponownie później.',
+      'sv': 'Jag beklagar, men jag stötte på ett fel när jag analyserade dina ekonomiska data. Försök att omformulera din fråga eller försök igen senare.',
+      'da': 'Jeg beklager, men jeg stødte på en fejl under analysen af dine finansielle data. Prøv venligst at omformulere dit spørgsmål eller prøv igen senere.',
+      'no': 'Jeg beklager, men jeg støtte på en feil under analysen av dine økonomiske data. Vennligst prøv å omformulere spørsmålet ditt eller prøv igjen senere.',
+      'fi': 'Pahoittelut, mutta kohtasin virheen analysoidessani taloudellisia tietojasi. Yritä muotoilla kysymyksesi uudelleen tai yritä myöhemmin uudelleen.',
+      'he': 'אני מתנצל, אבל נתקלתי בשגיאה בעת ניתוח הנתונים הפיננסיים שלך. אנא נסה לנסח מחדש את השאלה שלך או נסה שוב מאוחר יותר.',
+      'fa': 'عذر می‌خواهم، اما هنگام تجزیه و تحلیل داده‌های مالی شما با خطایی مواجه شدم. لطفاً سؤال خود را دوباره بیان کنید یا بعداً دوباره تلاش کنید.',
+      'ur': 'معذرت، لیکن میں نے آپ کے مالیاتی ڈیٹا کا تجزیہ کرتے وقت ایک خرابی کا سامنا کیا۔ براہ کرم اپنا سوال دوبارہ بیان کریں یا بعد میں دوبارہ کوشش کریں۔'
+    };
+    
+    return errorMessages[userLanguage] || errorMessages['en'];
   }
 }
 

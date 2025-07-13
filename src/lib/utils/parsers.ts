@@ -458,6 +458,8 @@ export function isValidCSVFile(file: File): boolean {
   ) && file.size <= maxSize;
 }
 
+import { validateTransaction, sanitizeTransaction } from './validation';
+
 /**
  * Clean and validate transaction input
  */
@@ -494,6 +496,23 @@ export function validateTransactionInput(input: any): TransactionInput | null {
 
     if (isNaN(originalAmount) || isNaN(convertedAmount)) return null;
 
+    // Use the new validation utility
+    const transactionData = {
+      description: input.description?.trim() || 'Unknown transaction',
+      amount: originalAmount,
+      currency: originalCurrency,
+      category: input.category || 'Other',
+      type: input.type || (originalAmount > 0 ? 'income' : 'expense'),
+      date: input.date ? new Date(input.date) : new Date(),
+      vendor: input.vendor?.trim()
+    };
+
+    const validation = validateTransaction(transactionData);
+    if (!validation.isValid) {
+      console.warn('Transaction validation failed:', validation.errors);
+      return null;
+    }
+
     return {
       originalAmount,
       originalCurrency,
@@ -504,11 +523,11 @@ export function validateTransactionInput(input: any): TransactionInput | null {
       // Legacy fields for backward compatibility
       amount: originalAmount,
       currency: originalCurrency,
-      description: input.description?.trim() || 'Unknown transaction',
-      vendor: input.vendor?.trim(),
-      date: input.date ? new Date(input.date) : new Date(),
-      category: input.category || 'Other',
-      type: input.type || (originalAmount > 0 ? 'income' : 'expense'),
+      description: transactionData.description,
+      vendor: transactionData.vendor,
+      date: transactionData.date,
+      category: transactionData.category,
+      type: transactionData.type,
       receiptUrl: input.receiptUrl
     };
   } catch {
