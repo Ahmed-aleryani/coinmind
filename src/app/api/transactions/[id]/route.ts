@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { transactionDb, initDatabase } from '@/lib/db/schema';
+import { getServices } from '@/lib/services';
 import { validateTransactionInput } from '@/lib/utils/parsers';
 import logger from '@/lib/utils/logger';
 
@@ -13,22 +13,31 @@ export async function GET(
   logger.info({ requestId, method: 'GET', url: request.url }, 'Get transaction by ID request started');
   
   try {
-    initDatabase();
+    const { services, userId } = await getServices();
     const resolvedParams = await params;
     
-    logger.info({ requestId, transactionId: resolvedParams.id }, 'Fetching transaction by ID');
+    logger.info({ requestId, transactionId: resolvedParams.id, userId }, 'Fetching transaction by ID');
     
-    const transaction = transactionDb.getById(resolvedParams.id);
+    const transactionId = parseInt(resolvedParams.id);
+    if (isNaN(transactionId)) {
+      logger.warn({ requestId, transactionId: resolvedParams.id }, 'Invalid transaction ID');
+      return NextResponse.json(
+        { success: false, error: 'Invalid transaction ID' },
+        { status: 400 }
+      );
+    }
+    
+    const transaction = await services.transactions.getTransaction(userId, transactionId);
     
     if (!transaction) {
-      logger.warn({ requestId, transactionId: resolvedParams.id }, 'Transaction not found');
+      logger.warn({ requestId, transactionId: resolvedParams.id, userId }, 'Transaction not found');
       return NextResponse.json(
         { success: false, error: 'Transaction not found' },
         { status: 404 }
       );
     }
     
-    logger.info({ requestId, transactionId: resolvedParams.id }, 'Transaction fetched successfully');
+    logger.info({ requestId, transactionId: resolvedParams.id, userId }, 'Transaction fetched successfully');
     
     return NextResponse.json({
       success: true,
@@ -66,7 +75,7 @@ export async function PUT(
   logger.info({ requestId, method: 'PUT', url: request.url }, 'Update transaction request started');
   
   try {
-    initDatabase();
+    const { services, userId } = await getServices();
     const resolvedParams = await params;
     
     const body = await request.json();
@@ -74,8 +83,18 @@ export async function PUT(
     logger.info({ 
       requestId, 
       transactionId: resolvedParams.id, 
-      updateKeys: Object.keys(body) 
+      updateKeys: Object.keys(body),
+      userId 
     }, 'Transaction update data received');
+    
+    const transactionId = parseInt(resolvedParams.id);
+    if (isNaN(transactionId)) {
+      logger.warn({ requestId, transactionId: resolvedParams.id }, 'Invalid transaction ID');
+      return NextResponse.json(
+        { success: false, error: 'Invalid transaction ID' },
+        { status: 400 }
+      );
+    }
     
     const updates = validateTransactionInput(body);
     
@@ -87,10 +106,10 @@ export async function PUT(
       );
     }
     
-    const transaction = transactionDb.update(resolvedParams.id, updates);
+    const transaction = await services.transactions.updateTransaction(userId, transactionId, updates);
     
     if (!transaction) {
-      logger.warn({ requestId, transactionId: resolvedParams.id }, 'Transaction not found for update');
+      logger.warn({ requestId, transactionId: resolvedParams.id, userId }, 'Transaction not found for update');
       return NextResponse.json(
         { success: false, error: 'Transaction not found' },
         { status: 404 }
@@ -100,7 +119,8 @@ export async function PUT(
     logger.info({ 
       requestId, 
       transactionId: resolvedParams.id,
-      updatedFields: Object.keys(updates)
+      updatedFields: Object.keys(updates),
+      userId
     }, 'Transaction updated successfully');
     
     return NextResponse.json({
@@ -139,22 +159,31 @@ export async function DELETE(
   logger.info({ requestId, method: 'DELETE', url: request.url }, 'Delete transaction request started');
   
   try {
-    initDatabase();
+    const { services, userId } = await getServices();
     const resolvedParams = await params;
     
-    logger.info({ requestId, transactionId: resolvedParams.id }, 'Deleting transaction');
+    logger.info({ requestId, transactionId: resolvedParams.id, userId }, 'Deleting transaction');
     
-    const success = transactionDb.delete(resolvedParams.id);
+    const transactionId = parseInt(resolvedParams.id);
+    if (isNaN(transactionId)) {
+      logger.warn({ requestId, transactionId: resolvedParams.id }, 'Invalid transaction ID');
+      return NextResponse.json(
+        { success: false, error: 'Invalid transaction ID' },
+        { status: 400 }
+      );
+    }
+    
+    const success = await services.transactions.deleteTransaction(userId, transactionId);
     
     if (!success) {
-      logger.warn({ requestId, transactionId: resolvedParams.id }, 'Transaction not found for deletion');
+      logger.warn({ requestId, transactionId: resolvedParams.id, userId }, 'Transaction not found for deletion');
       return NextResponse.json(
         { success: false, error: 'Transaction not found' },
         { status: 404 }
       );
     }
     
-    logger.info({ requestId, transactionId: resolvedParams.id }, 'Transaction deleted successfully');
+    logger.info({ requestId, transactionId: resolvedParams.id, userId }, 'Transaction deleted successfully');
     
     return NextResponse.json({
       success: true,

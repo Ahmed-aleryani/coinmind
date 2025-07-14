@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import logger from "@/lib/utils/logger";
-import { transactionDb } from "@/lib/db/schema";
+import { getServices } from "@/lib/services";
 import { TransactionCategory } from "@/lib/types/transaction";
 
 // Initialize Gemini AI for OCR

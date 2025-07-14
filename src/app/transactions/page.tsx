@@ -79,16 +79,20 @@ interface Transaction {
 }
 
 const CATEGORIES = [
-  "Food & Drink",
+  "Food & Dining",
+  "Shopping", 
   "Transportation",
-  "Utilities",
   "Entertainment",
-  "Shopping",
+  "Bills & Utilities",
   "Healthcare",
   "Education",
-  "Income",
-  "Transfer",
-  "Other",
+  "Travel",
+  "Other Expenses",
+  "Salary",
+  "Business",
+  "Investment",
+  "Gift",
+  "Other Income",
 ];
 
 export default function Transactions() {
@@ -328,10 +332,7 @@ export default function Transactions() {
     e.preventDefault();
 
     const transactionData = {
-      amount:
-        formData.type === "expense"
-          ? -Math.abs(Number(formData.amount))
-          : Math.abs(Number(formData.amount)),
+      amount: Math.abs(Number(formData.amount)), // Always send positive amount
       currency: formData.currency,
       vendor: formData.vendor,
       description: formData.description,

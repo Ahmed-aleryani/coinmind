@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { transactionDb, initDatabase } from '@/lib/db/schema';
+import { getServices } from '@/lib/services';
 import { validateTransactionInput } from '@/lib/utils/parsers';
 import logger from '@/lib/utils/logger';
 
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   logger.info({ requestId, method: 'GET', url: request.url }, 'Transactions API request started');
   
   try {
-    initDatabase();
+    const { services, userId } = await getServices();
     
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
@@ -18,15 +18,15 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const targetCurrency = searchParams.get('currency');
     
-    logger.info({ requestId, limit, offset, search, targetCurrency }, 'Fetching transactions with parameters');
+    logger.info({ requestId, limit, offset, search, targetCurrency, userId }, 'Fetching transactions with parameters');
     
     let transactions;
     
     if (search) {
-      transactions = transactionDb.search(search, limit);
+      transactions = await services.transactions.searchTransactions(userId, search, limit);
       logger.info({ requestId, search, resultCount: transactions.length }, 'Search completed');
     } else {
-      transactions = transactionDb.getAll(limit, offset);
+      transactions = await services.transactions.getTransactions(userId, limit, offset);
       logger.info({ requestId, resultCount: transactions.length }, 'Fetched all transactions');
     }
 
@@ -42,13 +42,15 @@ export async function GET(request: NextRequest) {
         // Fallback to per-transaction conversion since each transaction may have different source currency
         const { convertAmount } = await import('@/lib/utils/currency');
         const convertedAmounts = await Promise.all(transactions.map(async (t: any) => {
-          if (!t.originalAmount || !t.originalCurrency || t.originalCurrency === targetCurrency) {
-            return t.originalAmount || t.amount;
+          const originalAmount = Number(t.amount);
+          const originalCurrency = t.currencyCode;
+          if (originalCurrency === targetCurrency) {
+            return originalAmount;
           }
           try {
-            return await convertAmount(t.originalAmount, t.originalCurrency, targetCurrency);
+            return await convertAmount(originalAmount, originalCurrency, targetCurrency);
           } catch {
-            return t.originalAmount || t.amount;
+            return originalAmount;
           }
         }));
         transactions = transactions.map((t: any, i: number) => ({
@@ -63,8 +65,8 @@ export async function GET(request: NextRequest) {
       }
       const { rates, base } = ratesObj;
       transactions = transactions.map((t: any) => {
-        const origAmount = t.originalAmount || t.amount;
-        const origCurrency = t.originalCurrency || targetCurrency;
+        const origAmount = Number(t.amount);
+        const origCurrency = t.currencyCode;
         let converted = origAmount;
         try {
           converted = convertWithGlobalRates(origAmount, origCurrency, targetCurrency, rates, base);
@@ -93,16 +95,16 @@ export async function GET(request: NextRequest) {
       hasMore = false;
     }
 
-          return NextResponse.json({
-        success: true,
-        data: transactions,
-        pagination: {
-          limit,
-          offset,
-          totalCount,
-          hasMore
-        }
-      });
+    return NextResponse.json({
+      success: true,
+      data: transactions,
+      pagination: {
+        limit,
+        offset,
+        totalCount,
+        hasMore
+      }
+    });
   } catch (error) {
     const endTime = Date.now();
     const duration = endTime - startTime;
@@ -132,11 +134,11 @@ export async function POST(request: NextRequest) {
   logger.info({ requestId, method: 'POST', url: request.url }, 'Create transaction request started');
   
   try {
-    initDatabase();
+    const { services, userId } = await getServices();
     
     const body = await request.json();
     
-    logger.info({ requestId, bodyKeys: Object.keys(body) }, 'Transaction creation data received');
+    logger.info({ requestId, bodyKeys: Object.keys(body), userId }, 'Transaction creation data received');
     
     const transactionInput = validateTransactionInput(body);
     
@@ -148,10 +150,16 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const transaction = await transactionDb.create(transactionInput);
+    // Ensure amount is defined for the service
+    const serviceInput = {
+      ...transactionInput,
+      amount: transactionInput.amount || 0
+    };
+    
+    const transaction = await services.transactions.createTransaction(userId, serviceInput);
     
     if (!transaction) {
-      logger.error({ requestId }, 'Failed to create transaction - database returned null');
+      logger.error({ requestId }, 'Failed to create transaction - service returned null');
       return NextResponse.json(
         { success: false, error: 'Failed to create transaction' },
         { status: 500 }
@@ -160,9 +168,9 @@ export async function POST(request: NextRequest) {
     
     logger.info({ 
       requestId, 
-      transactionId: transaction.id, 
+      transactionId: transaction.transactionId, 
       amount: transaction.amount,
-      category: transaction.category 
+      description: transaction.description 
     }, 'Transaction created successfully');
     
     return NextResponse.json({

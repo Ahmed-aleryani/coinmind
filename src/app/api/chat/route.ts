@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { transactionDb, initDatabase } from "@/lib/db/schema";
-
 import { TransactionCategory } from "@/lib/types/transaction";
 import { parseTransactionText, parseCSVWithGemini, answerFinancialQuestion } from "@/lib/api/gemini";
 import logger from "@/lib/utils/logger";
-import { userSettingsDb } from "@/lib/db/schema";
 import { convertAmount } from "@/lib/utils/currency";
 import { CurrencyFormatter } from "@/lib/utils/currency-formatter";
-import { validateTransaction, sanitizeTransaction } from "@/lib/utils/validation";
 import { detectLanguage } from "@/lib/utils/language-detection";
+import { getServices } from "@/lib/services";
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
@@ -47,28 +44,12 @@ Response examples:
 - "Perfect! Recorded your €25 coffee expense. That's your 4th coffee this week—maybe time for a coffee budget? ☕"
 - "Your balance is {balance}. That's a healthy financial position! Would you like tips on investing the surplus?"
 - "I've noticed your entertainment spending increased by 20% this month. Would you like to review your budget or set a limit?"
-- "Would you like to set a savings goal or receive tips on reducing expenses in a specific category?"
+- "Would you like to set a savings goal or receive tips on reducing expenses in a specific category?"`;
 
-// Currency formatting is now handled by the unified CurrencyFormatter utility
-
-// Helper functions removed - LLM handles time period parsing naturally
-
-// LLM generates follow-up questions contextually
-
-// LLM handles financial advice detection
-
-// LLM provides financial advice contextually
-
-// Let the LLM determine, handle, and answer user's finance-related queries in the user's language.
-// This function delegates the entire financial query detection and response to the LLM.
+// Helper function to determine if user is asking about their financial data using AI
 async function handleFinancialQueryWithLLM(message: string, userLanguage?: string): Promise<{ isFinancial: boolean; intent: string; response: string }> {
   try {
-    // Compose a prompt that instructs the LLM to:
-    // 1. Detect if the message is about finance.
-    // 2. Identify the user's intent.
-    // 3. Return a JSON object with isFinancial and intent only.
-    const prompt = `
-You are a multilingual AI financial assistant.
+    const prompt = `You are a multilingual AI financial assistant.
 
 Analyze the following user message and:
 1. Determine if it is a financial query (about money, expenses, income, transactions, spending, etc.).
@@ -94,8 +75,7 @@ Intent categories:
 - "non_financial" - not related to finances
 
 User message: "${message}"
-${userLanguage ? `User language: ${userLanguage}` : ""}
-`;
+${userLanguage ? `User language: ${userLanguage}` : ""}`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -263,7 +243,16 @@ Respond naturally in the appropriate language based on the file name and AI anal
             });
           } catch (error) {
             // Fallback to simple message if AI fails
-            const fallbackMessage = `⚠️ **Duplicate File Detected**\n\n${aiExplanation}\n\n**File Details:**\n- Name: ${fileInfo.name}\n- Size: ${fileInfo.size} bytes\n- Type: ${fileInfo.type}\n\n**Recommendation:** Please select a different file or wait a moment before uploading the same file again to avoid duplicate transactions.`;
+            const fallbackMessage = `⚠️ **Duplicate File Detected**
+
+${aiExplanation}
+
+**File Details:**
+- Name: ${fileInfo.name}
+- Size: ${fileInfo.size} bytes
+- Type: ${fileInfo.type}
+
+**Recommendation:** Please select a different file or wait a moment before uploading the same file again to avoid duplicate transactions.`;
             
             return NextResponse.json({
               success: true,
@@ -279,7 +268,13 @@ Respond naturally in the appropriate language based on the file name and AI anal
         const result = await parseCSVWithGemini(csvText);
 
         // Return preview for user confirmation
-        const confirmationMessage = `📄 **Spreadsheet Analysis Complete**\n\n${result.preview}\n\nWould you like me to import these transactions to your account?\n\n**Click "Confirm" to import or "Cancel" to abort.**`;
+        const confirmationMessage = `📄 **Spreadsheet Analysis Complete**
+
+${result.preview}
+
+Would you like me to import these transactions to your account?
+
+**Click "Confirm" to import or "Cancel" to abort.**`;
 
         return NextResponse.json({
           success: true,
@@ -299,9 +294,7 @@ Respond naturally in the appropriate language based on the file name and AI anal
         return NextResponse.json(
           {
             success: false,
-            error: `CSV import failed: ${
-              error instanceof Error ? error.message : "Unknown error"
-            }`,
+            error: `CSV import failed: ${error instanceof Error ? error.message : "Unknown error"}`,
           },
           { status: 500 }
         );
@@ -328,12 +321,10 @@ Respond naturally in the appropriate language based on the file name and AI anal
         const csvText = csvMatch[1];
         const result = await parseCSVWithGemini(csvText);
 
-        // Initialize database
-        initDatabase();
-
-        // Get user's default currency
-        const userSettings = userSettingsDb.get() || { defaultCurrency: "USD" };
-        const defaultCurrency = userSettings.defaultCurrency || "USD";
+        // Get services and user profile
+        const { services, userId } = await getServices();
+        const profile = await services.repositories.profiles.findById(userId);
+        const defaultCurrency = profile?.defaultCurrency || "USD";
 
         let importedCount = 0;
         let failedCount = 0;
@@ -391,7 +382,14 @@ Respond naturally in the appropriate language based on the file name and AI anal
               vendor: transaction.vendor || "CSV Import",
             };
 
-            transactionDb.create(newTransaction);
+            await services.transactions.createTransaction(userId, {
+              amount: newTransaction.originalAmount,
+              currency: newTransaction.originalCurrency,
+              description: newTransaction.description,
+              category: newTransaction.category,
+              date: newTransaction.date,
+              vendor: newTransaction.vendor,
+            });
             importedCount++;
           } catch (transactionError) {
             logger.error(
@@ -409,12 +407,16 @@ Respond naturally in the appropriate language based on the file name and AI anal
         }
 
         // Create success message
-        let successMessage = `✅ **Spreadsheet Import Complete**\n\n`;
-        successMessage += `Successfully imported **${importedCount}** transactions`;
+        let successMessage = `✅ **Spreadsheet Import Complete**
+
+Successfully imported **${importedCount}** transactions`;
         if (failedCount > 0) {
-          successMessage += `\n⚠️ Failed to import ${failedCount} transactions`;
+          successMessage += `
+⚠️ Failed to import ${failedCount} transactions`;
         }
-        successMessage += `\n\nYour transactions have been added to your account. You can view them in the dashboard.`;
+        successMessage += `
+
+Your transactions have been added to your account. You can view them in the dashboard.`;
 
         return NextResponse.json({
           success: true,
@@ -431,19 +433,17 @@ Respond naturally in the appropriate language based on the file name and AI anal
         return NextResponse.json(
           {
             success: false,
-            error: `CSV import failed: ${
-              error instanceof Error ? error.message : "Unknown error"
-            }`,
+            error: `CSV import failed: ${error instanceof Error ? error.message : "Unknown error"}`,
           },
           { status: 500 }
         );
       }
     }
 
-    // Initialize database and get financial data
+    // Get services and financial data
     try {
-      initDatabase();
-      const transactions = transactionDb.getAll();
+      const { services, userId } = await getServices();
+      const transactions = await services.transactions.getTransactions(userId, 1000);
 
       const totalBalance = transactions.reduce(
         (sum: number, t: any) => sum + (t.amount || 0),
@@ -459,8 +459,8 @@ Respond naturally in the appropriate language based on the file name and AI anal
       );
 
       // Get user's default currency for formatting
-      const userSettings = userSettingsDb.get() || { defaultCurrency: "USD" };
-      const defaultCurrency = userSettings.defaultCurrency || "USD";
+      const profile = await services.repositories.profiles.findById(userId);
+      const defaultCurrency = profile?.defaultCurrency || "USD";
       
       // Format currency using user's default currency
       const formattedBalance = CurrencyFormatter.format(totalBalance, defaultCurrency);
@@ -510,14 +510,11 @@ Respond naturally in the appropriate language based on the file name and AI anal
       }
 
       if (transactionInfo) {
-        // Use currency from AI parsing or default currency - no language-based detection
         // Add the transaction to the database
         try {
           // Get user's default currency
-          const userSettings = userSettingsDb.get() || {
-            defaultCurrency: "USD",
-          };
-          const defaultCurrency = userSettings.defaultCurrency || "USD";
+          const profile = await services.repositories.profiles.findById(userId);
+          const defaultCurrency = profile?.defaultCurrency || "USD";
 
           // Extract currency from parsed transaction or use default
           const transactionCurrency =
@@ -575,19 +572,15 @@ Respond naturally in the appropriate language based on the file name and AI anal
             vendor: "Chat Input",
           };
 
-          transactionDb.create(newTransaction);
+          await services.transactions.createTransaction(userId, {
+            amount: transactionInfo.amount,
+            currency: transactionCurrency,
+            description: transactionInfo.description,
+            category: transactionInfo.category,
+            date: transactionInfo.date,
+            vendor: "Chat Input",
+          });
           transactionAdded = true;
-
-          // Get updated financial data
-          const updatedTransactions = transactionDb.getAll();
-          const updatedBalance = updatedTransactions.reduce(
-            (sum: number, t: any) => sum + (t.convertedAmount || t.amount || 0),
-            0
-          );
-          const updatedFormattedBalance = CurrencyFormatter.format(
-            updatedBalance,
-            defaultCurrency
-          );
 
           // Create success message in the detected language
           const originalAmountStr = CurrencyFormatter.formatWithSymbol(
@@ -602,10 +595,26 @@ Respond naturally in the appropriate language based on the file name and AI anal
             .replace("{expenses}", formattedExpenses)
             .replace("{transactionCount}", (transactions.length + 1).toString())
             .replace("{defaultCurrency}", defaultCurrency) +
-            `\n\nUser message: ${message}\n\nA transaction has been successfully added:\n- Description: ${transactionInfo.description}\n- Amount: ${originalAmountStr}\n- Category: ${transactionInfo.category}\n- Type: ${transactionInfo.type}\n- Date: ${transactionInfo.date?.toDateString() || new Date().toDateString()}\n\nGenerate a natural, friendly response acknowledging the transaction was added. Include helpful insights or suggestions if appropriate. Respond in the same language as the user's message.\n\nExamples:\n- "Great! I've added your $6 coffee purchase to your expenses. That's your 3rd coffee this week - maybe time for a coffee budget? ☕"\n- "Perfect! Recorded your $50 grocery expense. You've spent $240 on food this month so far."\n- "Got it! Added your $2000 salary to your income. Your balance is looking healthy this month! 💰"\n- "Nice! Your $15 lunch expense has been saved. Food spending is at $180 this week - still within your usual range."`;
+            `
+
+User message: ${message}
+
+A transaction has been successfully added:
+- Description: ${transactionInfo.description}
+- Amount: ${originalAmountStr}
+- Category: ${transactionInfo.category}
+- Type: ${transactionInfo.type}
+- Date: ${transactionInfo.date?.toDateString() || new Date().toDateString()}
+
+Generate a natural, friendly response acknowledging the transaction was added. Include helpful insights or suggestions if appropriate. Respond in the same language as the user's message.
+
+Examples:
+- "Great! I've added your $6 coffee purchase to your expenses. That's your 3rd coffee this week - maybe time for a coffee budget? ☕"
+- "Perfect! Recorded your $50 grocery expense. You've spent $240 on food this month so far."
+- "Got it! Added your $2000 salary to your income. Your balance is looking healthy this month! 💰"
+- "Nice! Your $15 lunch expense has been saved. Food spending is at $180 this week - still within your usual range."`;
 
           // Generate AI success message
-
           const result = await model.generateContent(transactionSuccessPrompt);
           const response = await result.response;
           responseText = response.text();
@@ -627,10 +636,18 @@ Respond naturally in the appropriate language based on the file name and AI anal
             .replace("{expenses}", formattedExpenses)
             .replace("{transactionCount}", transactions.length.toString())
             .replace("{defaultCurrency}", defaultCurrency) +
-            `\n\nUser message: ${message}\n\nThere was an error while trying to add the transaction. Generate a helpful, apologetic response acknowledging the error and suggesting the user try again. Respond in the same language as the user's message.\n\nExamples:\n- "Sorry, I had trouble adding that transaction. Could you try again? Sometimes rephrasing helps!"\n- "Oops! Something went wrong while saving your transaction. Please try again."\n- "I apologize, but I couldn't save that transaction. Could you try entering it again?"`;
+            `
+
+User message: ${message}
+
+There was an error while trying to add the transaction. Generate a helpful, apologetic response acknowledging the error and suggesting the user try again. Respond in the same language as the user's message.
+
+Examples:
+- "Sorry, I had trouble adding that transaction. Could you try again? Sometimes rephrasing helps!"
+- "Oops! Something went wrong while saving your transaction. Please try again."
+- "I apologize, but I couldn't save that transaction. Could you try entering it again?"`;
 
           // Generate AI error message
-
           try {
             const result = await model.generateContent(transactionErrorPrompt);
             const response = await result.response;
@@ -644,8 +661,7 @@ Respond naturally in the appropriate language based on the file name and AI anal
 
       // If no transaction was detected or added, use the regular AI response
       if (!transactionAdded) {
-        // Use the simple English system prompt
-
+        // Use the system prompt for general responses
         const prompt =
           SYSTEM_PROMPT
             .replace("{balance}", formattedBalance)
@@ -653,10 +669,13 @@ Respond naturally in the appropriate language based on the file name and AI anal
             .replace("{expenses}", formattedExpenses)
             .replace("{transactionCount}", transactions.length.toString())
             .replace("{defaultCurrency}", defaultCurrency) +
-          `\n\nUser message: ${message}\n\nRemember: Respond in the same language as the user's message.`;
+          `
+
+User message: ${message}
+
+Remember: Respond in the same language as the user's message.`;
 
         // Send chat request to Gemini
-
         const result = await model.generateContent(prompt);
         const response = await result.response;
         responseText = response.text();
@@ -690,7 +709,7 @@ Respond naturally in the appropriate language based on the file name and AI anal
           try {
             // Detect user's language from the message
             const detectedLanguage = detectLanguage(message);
-            const financialAnswer = await answerFinancialQuestion(message, detectedLanguage.code);
+            const financialAnswer = await answerFinancialQuestion(userId, message, detectedLanguage.code);
             
             return NextResponse.json({
               success: true,
@@ -702,42 +721,11 @@ Respond naturally in the appropriate language based on the file name and AI anal
           } catch (error) {
             logger.error({ 
               error: error instanceof Error ? error.message : error,
+              userId,
               message: message.substring(0, 100)
-            }, 'Financial query processing failed, falling back to general response');
+            }, 'Financial question processing failed');
             
             // Fall through to general AI response
-          }
-        } else if (queryAnalysis.intent === "unknown") {
-          // Handle unknown intent - let AI generate appropriate response
-          const unknownPrompt = SYSTEM_PROMPT
-            .replace("{balance}", formattedBalance)
-            .replace("{income}", formattedIncome)
-            .replace("{expenses}", formattedExpenses)
-            .replace("{transactionCount}", transactions.length.toString())
-            .replace("{defaultCurrency}", defaultCurrency) +
-            `\n\nUser message: ${message}\n\nI couldn't understand what the user is asking for. Generate a helpful response asking them to clarify their question. Respond in the same language as the user's message.`;
-          
-          try {
-            const result = await model.generateContent(unknownPrompt);
-            const response = await result.response;
-            const unknownMessage = response.text();
-            
-            return NextResponse.json({
-              success: true,
-              data: {
-                message: unknownMessage,
-                transactionAdded: false,
-              },
-            });
-          } catch (error) {
-            // Fallback to simple message
-            return NextResponse.json({
-              success: true,
-              data: {
-                message: "I couldn't understand what you're asking for. Could you clarify your question?",
-                transactionAdded: false,
-              },
-            });
           }
         }
       }
@@ -783,7 +771,5 @@ Respond naturally in the appropriate language based on the file name and AI anal
     );
   }
 }
-
-// Removed extractTransactionFromMessage - LLM handles all transaction parsing
 
 
