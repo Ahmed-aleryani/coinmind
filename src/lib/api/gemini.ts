@@ -933,6 +933,8 @@ Respond to the user in ${userLanguage} with a polite, empathetic message explain
     } catch {
       return "Sorry, an error occurred while processing your request. Please try again later.";
     }
+  }
+}
 
 /**
  * Parse spreadsheet data (CSV or XLSX) using Gemini 2.5 Pro Preview for fast and accurate processing
@@ -1398,4 +1400,3 @@ function getCategoryBreakdown(transactions: any[]) {
     .sort((a, b) => b.amount - a.amount);
 }
 
-// Test function removed - was causing noisy logs

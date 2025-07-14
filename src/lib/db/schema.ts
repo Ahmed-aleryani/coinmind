@@ -120,7 +120,6 @@ export const transactionDb = {
 
     const userSettings = userSettingsDb.get() || { defaultCurrency: 'USD' };
     const defaultCurrency = userSettings.defaultCurrency || 'USD';
-    
 
     
     // Handle both legacy and new multi-currency formats
