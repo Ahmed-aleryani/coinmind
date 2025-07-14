@@ -1,38 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { transactionDb, initDatabase } from "@/lib/db/schema";
-import {
-  detectLanguage,
-} from "@/lib/utils/language-detection";
+
 import { TransactionCategory } from "@/lib/types/transaction";
 import { parseTransactionText, parseCSVWithGemini, answerFinancialQuestion } from "@/lib/api/gemini";
 import logger from "@/lib/utils/logger";
 import { userSettingsDb } from "@/lib/db/schema";
 import { convertAmount } from "@/lib/utils/currency";
+import { CurrencyFormatter } from "@/lib/utils/currency-formatter";
+import { validateTransaction, sanitizeTransaction } from "@/lib/utils/validation";
+import { detectLanguage } from "@/lib/utils/language-detection";
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-// Enhanced system prompt that guides LLM on proper financial assistance
-const SYSTEM_PROMPT = `You are CoinMind, a smart financial assistant. Your task is to help users manage their personal finances.
+// Enhanced system prompt for advanced, context-aware financial assistance
+const SYSTEM_PROMPT = `You are CoinMind, an intelligent and proactive financial assistant. Your mission is to help users manage, understand, and optimize their personal finances with clarity and empathy.
 
-Current financial information:
+User's current financial snapshot:
 - Total balance: {balance}
 - Total income: {income}
 - Total expenses: {expenses}
-- Transaction count: {transactionCount}
-- User's default currency: {defaultCurrency}
+- Number of transactions: {transactionCount}
+- Default currency: {defaultCurrency}
 
-Important rules:
-1. Always respond in the same language as the user's message
-2. Be helpful and money-conscious with practical financial advice
-3. When parsing transactions, extract currency if mentioned, otherwise assume user's default currency
-4. Provide contextual insights about spending patterns, budgeting, and financial health
-5. Ask clarifying questions when user input is unclear
-6. Use friendly, professional language with appropriate cultural context
-7. Format currency amounts using the user's default currency unless specified otherwise
-8. Generate natural follow-up questions and suggestions based on financial context
+Guidelines for interaction:
+1. **CRITICAL**: Always reply in the same language as the user's message. If the user writes in Arabic, respond in Arabic. If they write in Spanish, respond in Spanish, etc.
+2. Offer practical, actionable, and money-conscious financial advice.
+3. When parsing transactions, extract the currency if mentioned; otherwise, default to the user's currency.
+4. Provide insightful analysis on spending patterns, budgeting, and overall financial health.
+5. Ask clarifying questions if the user's input is ambiguous or incomplete.
+6. Use a friendly, professional tone, and adapt to the user's cultural context.
+7. Format all currency amounts using the user's default currency unless another is specified.
+8. Proactively suggest follow-up questions and personalized recommendations based on the user's financial context.
+9. If the user asks about financial goals, savings, or investments, offer tailored suggestions and encouragement.
+10. If you detect signs of financial stress or concern, respond with empathy and supportive advice.
 
 Currency handling:
 - If user mentions a currency in their message, use that currency
@@ -40,48 +43,13 @@ Currency handling:
 - When user provides different currency than default, system will handle exchange rate conversion
 
 Response examples:
-- "Great! I've added your $50 grocery expense. You've spent $240 on food this month - still within your usual range."
-- "Perfect! Recorded your €25 coffee expense. That's your 4th coffee this week - maybe time for a coffee budget? ☕"
-- "Your balance is {balance}. That's a healthy financial position! Would you like tips on investing the surplus?"`;
+- "Great! I've added your $50 grocery expense. You've spent $240 on food this month—still within your usual range."
+- "Perfect! Recorded your €25 coffee expense. That's your 4th coffee this week—maybe time for a coffee budget? ☕"
+- "Your balance is {balance}. That's a healthy financial position! Would you like tips on investing the surplus?"
+- "I've noticed your entertainment spending increased by 20% this month. Would you like to review your budget or set a limit?"
+- "Would you like to set a savings goal or receive tips on reducing expenses in a specific category?"
 
-// Helper function to format currency based on currency code
-function formatCurrencyByCode(amount: number, currencyCode: string): string {
-  const currencyFormats: Record<string, { locale: string; currency: string }> =
-    {
-      USD: { locale: "en-US", currency: "USD" },
-      EUR: { locale: "de-DE", currency: "EUR" },
-      SAR: { locale: "ar-SA", currency: "SAR" },
-      GBP: { locale: "en-GB", currency: "GBP" },
-      JPY: { locale: "ja-JP", currency: "JPY" },
-      CNY: { locale: "zh-CN", currency: "CNY" },
-      KRW: { locale: "ko-KR", currency: "KRW" },
-      INR: { locale: "hi-IN", currency: "INR" },
-      RUB: { locale: "ru-RU", currency: "RUB" },
-      TRY: { locale: "tr-TR", currency: "TRY" },
-      PLN: { locale: "pl-PL", currency: "PLN" },
-      SEK: { locale: "sv-SE", currency: "SEK" },
-      DKK: { locale: "da-DK", currency: "DKK" },
-      NOK: { locale: "no-NO", currency: "NOK" },
-      ILS: { locale: "he-IL", currency: "ILS" },
-      IRR: { locale: "fa-IR", currency: "IRR" },
-      PKR: { locale: "ur-PK", currency: "PKR" },
-    };
-
-  const format = currencyFormats[currencyCode] || currencyFormats.USD;
-
-  try {
-    return new Intl.NumberFormat(format.locale, {
-      style: "currency",
-      currency: format.currency,
-    }).format(amount);
-  } catch (error) {
-    // Fallback to USD
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
-  }
-}
+// Currency formatting is now handled by the unified CurrencyFormatter utility
 
 // Helper functions removed - LLM handles time period parsing naturally
 
@@ -91,16 +59,20 @@ function formatCurrencyByCode(amount: number, currencyCode: string): string {
 
 // LLM provides financial advice contextually
 
-// Helper function to determine if user is asking about financial data using AI
-async function determineIfFinancialQuery(message: string): Promise<{ isFinancial: boolean; intent: string }> {
+// Let the LLM determine, handle, and answer user's finance-related queries in the user's language.
+// This function delegates the entire financial query detection and response to the LLM.
+async function handleFinancialQueryWithLLM(message: string, userLanguage?: string): Promise<{ isFinancial: boolean; intent: string; response: string }> {
   try {
-    const intentDetectionPrompt = `You are an AI assistant that identifies user intent in financial conversations. 
+    // Compose a prompt that instructs the LLM to:
+    // 1. Detect if the message is about finance.
+    // 2. Identify the user's intent.
+    // 3. Return a JSON object with isFinancial and intent only.
+    const prompt = `
+You are a multilingual AI financial assistant.
 
-Analyze the following user message and determine:
-1. Is this a financial query (asking about money, expenses, income, transactions, spending, etc.)?
-2. What is the specific intent?
-
-User message: "${message}"
+Analyze the following user message and:
+1. Determine if it is a financial query (about money, expenses, income, transactions, spending, etc.).
+2. Identify the specific intent (see categories below).
 
 Respond with ONLY a raw JSON object (no markdown formatting) in this exact format:
 {
@@ -121,43 +93,49 @@ Intent categories:
 - "unknown" - unclear what they want, even after analysis
 - "non_financial" - not related to finances
 
-Be strict - only return isFinancial: true if it's clearly about finances.`;
+User message: "${message}"
+${userLanguage ? `User language: ${userLanguage}` : ""}
+`;
 
-    const result = await model.generateContent(intentDetectionPrompt);
+    const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text().trim();
 
     // Try to parse JSON response - handle both raw JSON and markdown-wrapped JSON
     try {
       let jsonText = text;
-      
       // Check if response is wrapped in markdown code blocks
       const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
       if (codeBlockMatch) {
         jsonText = codeBlockMatch[1].trim();
       }
-      
       const parsed = JSON.parse(jsonText);
-      if (typeof parsed.isFinancial === 'boolean' && typeof parsed.intent === 'string') {
+      if (
+        typeof parsed.isFinancial === 'boolean' &&
+        typeof parsed.intent === 'string'
+      ) {
         return {
           isFinancial: parsed.isFinancial,
-          intent: parsed.intent
+          intent: parsed.intent,
+          response: "" // No response here - let answerFinancialQuestion handle the actual response
         };
       }
     } catch (parseError) {
-      logger.warn({ text, parseError }, 'Failed to parse AI intent detection response');
+      logger.warn({ text, parseError }, 'Failed to parse AI financial query response');
     }
 
     // Fallback if JSON parsing fails
     return {
       isFinancial: false,
-      intent: "unknown"
+      intent: "unknown",
+      response: ""
     };
   } catch (error) {
-    logger.error({ error }, 'Intent detection failed');
+    logger.error({ error }, 'Financial query handling failed');
     return {
       isFinancial: false,
-      intent: "unknown"
+      intent: "unknown",
+      response: ""
     };
   }
 }
@@ -185,38 +163,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use provided language or detect it
-    let detectedLanguage;
-    if (language && typeof language === "string") {
-      // Use the language provided by frontend
-      detectedLanguage = {
-        code: language,
-        name: language,
-        isRTL: ["ar", "he", "fa", "ur"].includes(language),
-      };
-      logger.info(
-        { detectedLanguage: detectedLanguage.code },
-        "Language provided by frontend"
-      );
-    } else {
-      // Fallback to server-side detection
-      detectedLanguage = detectLanguage(message);
-      logger.info(
-        { detectedLanguage: detectedLanguage.code },
-        "Language detected by server"
-      );
-    }
+    // Let AI handle language detection naturally
+    logger.info("Processing message - AI will detect language automatically");
 
     // Handle CSV import requests
     if (type === "csv_import") {
       try {
         logger.info("Processing CSV import request");
 
-        // Extract CSV data from message
+        // Extract file information from request body
+        const { fileInfo, previousFile } = await request.json();
+        
+        // Extract spreadsheet data from message
         const csvMatch = message.match(
-          /Please analyze and import this CSV file data:\n\n([\s\S]*)/
+          /Please analyze and import this spreadsheet file data:\n\n([\s\S]*)/
         );
         if (!csvMatch) {
+          logger.error("No spreadsheet data found in message");
           return NextResponse.json(
             {
               success: false,
@@ -227,10 +190,96 @@ export async function POST(request: NextRequest) {
         }
 
         const csvText = csvMatch[1];
+        logger.info({ csvTextLength: csvText.length, csvTextPreview: csvText.substring(0, 200) }, "Extracted spreadsheet data");
+        
+        // Use AI to analyze if this is a duplicate file
+        let duplicateAnalysis = "";
+        if (previousFile) {
+          const duplicatePrompt = `You are a multilingual AI assistant analyzing file uploads. 
+
+Analyze if this file upload is a duplicate:
+
+Current file: ${fileInfo.name} (${fileInfo.size} bytes, modified: ${new Date(fileInfo.lastModified).toISOString()})
+Previous file: ${previousFile.name} (${previousFile.size} bytes, modified: ${new Date(previousFile.lastModified).toISOString()})
+
+Consider:
+1. File names (exact match or similar)
+2. File sizes (identical or very close)
+3. Modification times (same or very close)
+4. File content similarity
+
+**Language Detection & Response:**
+- Analyze the file name and content to determine the user's language preference
+- Respond in the same language as the file name or content
+- Be culturally sensitive and user-friendly
+- Consider the natural language patterns in the file name
+
+**Response Format:**
+- Start with "DUPLICATE:" or "NEW_FILE:" followed by your analysis
+- Provide explanation in the detected language
+- Include specific details about why the file is considered duplicate or different
+
+Analyze and respond naturally in the appropriate language:`;
+
+          try {
+            const duplicateResponse = await model.generateContent(duplicatePrompt);
+            duplicateAnalysis = duplicateResponse.response.text();
+            logger.info({ duplicateAnalysis }, "AI duplicate analysis completed");
+          } catch (error) {
+            logger.warn({ error }, "AI duplicate analysis failed, proceeding with import");
+          }
+        }
+
+        // Check if AI detected a duplicate
+        if (duplicateAnalysis.includes("DUPLICATE")) {
+          // Extract the AI's explanation and use it directly
+          const aiExplanation = duplicateAnalysis.replace(/^DUPLICATE:\s*/i, '').trim();
+          
+          // Let the AI handle the complete response naturally
+          const duplicatePrompt = `You are a multilingual AI assistant. The AI analysis found a duplicate file:
+
+File: ${fileInfo.name} (${fileInfo.size} bytes, type: ${fileInfo.type})
+AI Analysis: ${aiExplanation}
+
+Generate a complete, user-friendly duplicate detection message in the same language as the file name. Include:
+- A clear warning about the duplicate
+- File details
+- Recommendation to select a different file
+
+Respond naturally in the appropriate language based on the file name and AI analysis.`;
+
+          try {
+            const result = await model.generateContent(duplicatePrompt);
+            const response = await result.response;
+            const duplicateMessage = response.text();
+            
+            return NextResponse.json({
+              success: true,
+              data: {
+                message: duplicateMessage,
+                type: "duplicate_detected",
+                isDuplicate: true,
+              },
+            });
+          } catch (error) {
+            // Fallback to simple message if AI fails
+            const fallbackMessage = `⚠️ **Duplicate File Detected**\n\n${aiExplanation}\n\n**File Details:**\n- Name: ${fileInfo.name}\n- Size: ${fileInfo.size} bytes\n- Type: ${fileInfo.type}\n\n**Recommendation:** Please select a different file or wait a moment before uploading the same file again to avoid duplicate transactions.`;
+            
+            return NextResponse.json({
+              success: true,
+              data: {
+                message: fallbackMessage,
+                type: "duplicate_detected",
+                isDuplicate: true,
+              },
+            });
+          }
+        }
+        
         const result = await parseCSVWithGemini(csvText);
 
         // Return preview for user confirmation
-        const confirmationMessage = `📄 **CSV Analysis Complete**\n\n${result.preview}\n\nWould you like me to import these transactions to your account?\n\n**Click "Confirm" to import or "Cancel" to abort.**`;
+        const confirmationMessage = `📄 **Spreadsheet Analysis Complete**\n\n${result.preview}\n\nWould you like me to import these transactions to your account?\n\n**Click "Confirm" to import or "Cancel" to abort.**`;
 
         return NextResponse.json({
           success: true,
@@ -239,6 +288,7 @@ export async function POST(request: NextRequest) {
             type: "csv_preview",
             requiresConfirmation: true,
             suggestions: ["Confirm Import", "Cancel Import"],
+            fileInfo: fileInfo, // Return file info for tracking
           },
         });
       } catch (error) {
@@ -263,7 +313,7 @@ export async function POST(request: NextRequest) {
       try {
         logger.info("Processing CSV import confirmation");
 
-        // Extract CSV data from message
+        // Extract spreadsheet data from message
         const csvMatch = message.match(/Process CSV import: ([\s\S]*)/);
         if (!csvMatch) {
           return NextResponse.json(
@@ -359,7 +409,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Create success message
-        let successMessage = `✅ **CSV Import Complete**\n\n`;
+        let successMessage = `✅ **Spreadsheet Import Complete**\n\n`;
         successMessage += `Successfully imported **${importedCount}** transactions`;
         if (failedCount > 0) {
           successMessage += `\n⚠️ Failed to import ${failedCount} transactions`;
@@ -413,9 +463,9 @@ export async function POST(request: NextRequest) {
       const defaultCurrency = userSettings.defaultCurrency || "USD";
       
       // Format currency using user's default currency
-      const formattedBalance = formatCurrencyByCode(totalBalance, defaultCurrency);
-      const formattedIncome = formatCurrencyByCode(income, defaultCurrency);
-      const formattedExpenses = formatCurrencyByCode(expenses, defaultCurrency);
+      const formattedBalance = CurrencyFormatter.format(totalBalance, defaultCurrency);
+      const formattedIncome = CurrencyFormatter.format(income, defaultCurrency);
+      const formattedExpenses = CurrencyFormatter.format(expenses, defaultCurrency);
 
       // Check if the message contains transaction information using AI-powered parsing
       let responseText = "";
@@ -534,58 +584,13 @@ export async function POST(request: NextRequest) {
             (sum: number, t: any) => sum + (t.convertedAmount || t.amount || 0),
             0
           );
-          const updatedFormattedBalance = formatCurrencyByCode(
+          const updatedFormattedBalance = CurrencyFormatter.format(
             updatedBalance,
             defaultCurrency
           );
 
           // Create success message in the detected language
-          // Helper to get currency symbol by code
-          function getCurrencySymbol(code: string): string {
-            const symbols: Record<string, string> = {
-              USD: "$",
-              EUR: "€",
-              GBP: "£",
-              JPY: "¥",
-              SAR: "ر.س",
-              EGP: "£",
-              AED: "د.إ",
-              KWD: "د.ك",
-              BHD: "ب.د",
-              JOD: "د.ا",
-              CNY: "¥",
-              KRW: "₩",
-              INR: "₹",
-              RUB: "₽",
-              TRY: "₺",
-              PLN: "zł",
-              SEK: "kr",
-              NOK: "kr",
-              DKK: "kr",
-              MAD: "د.م",
-              DZD: "دج",
-              TND: "د.ت",
-              QAR: "ر.ق",
-              LBP: "ل.ل",
-              YER: "ر.ي", // Yemeni Rial
-            };
-            return symbols[code] || code;
-          }
-
-          // Format number in English numerals
-          function formatNumberEn(num: number): string {
-            return num.toLocaleString("en-US", {
-              maximumFractionDigits: 2,
-              minimumFractionDigits: 2,
-            });
-          }
-
-          // Format number in English numerals, then append currency symbol
-          function formatAmountWithSymbol(num: number, code: string): string {
-            return `${formatNumberEn(num)}${getCurrencySymbol(code)}`;
-          }
-
-          const originalAmountStr = formatAmountWithSymbol(
+          const originalAmountStr = CurrencyFormatter.formatWithSymbol(
             Math.abs(transactionInfo.amount),
             transactionCurrency
           );
@@ -659,7 +664,6 @@ export async function POST(request: NextRequest) {
         logger.info(
           {
             responseLength: responseText.length,
-            detectedLanguage: detectedLanguage.code,
           },
           "Chat response generated successfully"
         );
@@ -667,8 +671,11 @@ export async function POST(request: NextRequest) {
 
       // Check if this is a financial query using AI-powered function calling
       if (!transactionAdded) {
-        // Determine if user is asking about their financial data
-        const queryAnalysis = await determineIfFinancialQuery(message);
+        // Detect user's language first
+        const detectedLanguage = detectLanguage(message);
+        
+        // Determine if user is asking about their financial data using AI
+        const queryAnalysis = await handleFinancialQueryWithLLM(message, detectedLanguage.code);
         
         logger.info({ 
           message: message.substring(0, 100),
@@ -679,18 +686,19 @@ export async function POST(request: NextRequest) {
         if (queryAnalysis.isFinancial) {
           logger.info({ message: message.substring(0, 100) }, 'Processing financial query with AI function calling');
           
+          // Always use answerFinancialQuestion for financial queries since it has access to the database
           try {
+            // Detect user's language from the message
+            const detectedLanguage = detectLanguage(message);
             const financialAnswer = await answerFinancialQuestion(message, detectedLanguage.code);
             
-        return NextResponse.json({
-          success: true,
-          data: {
+            return NextResponse.json({
+              success: true,
+              data: {
                 message: financialAnswer,
-                detectedLanguage: detectedLanguage.code,
-            isRTL: detectedLanguage.isRTL,
-            transactionAdded: false,
-          },
-        });
+                transactionAdded: false,
+              },
+            });
           } catch (error) {
             logger.error({ 
               error: error instanceof Error ? error.message : error,
@@ -700,22 +708,37 @@ export async function POST(request: NextRequest) {
             // Fall through to general AI response
           }
         } else if (queryAnalysis.intent === "unknown") {
-          // Handle unknown intent - respond with "unknown" message
-          const unknownMessage = detectedLanguage.code === "ar" 
-            ? "غير معروف - لم أتمكن من فهم ما تريد. هل يمكنك توضيح سؤالك أكثر؟"
-            : detectedLanguage.code === "es"
-            ? "Desconocido - No pude entender lo que quieres. ¿Podrías aclarar tu pregunta?"
-            : "Unknown - I couldn't understand what you're asking for. Could you clarify your question?";
+          // Handle unknown intent - let AI generate appropriate response
+          const unknownPrompt = SYSTEM_PROMPT
+            .replace("{balance}", formattedBalance)
+            .replace("{income}", formattedIncome)
+            .replace("{expenses}", formattedExpenses)
+            .replace("{transactionCount}", transactions.length.toString())
+            .replace("{defaultCurrency}", defaultCurrency) +
+            `\n\nUser message: ${message}\n\nI couldn't understand what the user is asking for. Generate a helpful response asking them to clarify their question. Respond in the same language as the user's message.`;
           
-        return NextResponse.json({
-          success: true,
-          data: {
-              message: unknownMessage,
-            detectedLanguage: detectedLanguage.code,
-            isRTL: detectedLanguage.isRTL,
-            transactionAdded: false,
-          },
-        });
+          try {
+            const result = await model.generateContent(unknownPrompt);
+            const response = await result.response;
+            const unknownMessage = response.text();
+            
+            return NextResponse.json({
+              success: true,
+              data: {
+                message: unknownMessage,
+                transactionAdded: false,
+              },
+            });
+          } catch (error) {
+            // Fallback to simple message
+            return NextResponse.json({
+              success: true,
+              data: {
+                message: "I couldn't understand what you're asking for. Could you clarify your question?",
+                transactionAdded: false,
+              },
+            });
+          }
         }
       }
 
@@ -723,8 +746,6 @@ export async function POST(request: NextRequest) {
         success: true,
         data: {
           message: responseText,
-          detectedLanguage: detectedLanguage.code,
-          isRTL: detectedLanguage.isRTL,
           transactionAdded: transactionAdded,
         },
       });
@@ -735,7 +756,7 @@ export async function POST(request: NextRequest) {
       );
 
       // Fallback response without database data
-      const fallbackPrompt = `You are a smart financial assistant called CoinMind. The user said: "${message}". Please respond in ${detectedLanguage.name} (${detectedLanguage.code}) and be helpful with financial advice.`;
+      const fallbackPrompt = `You are a smart financial assistant called CoinMind. The user said: "${message}". Please respond in the same language as the user's message and be helpful with financial advice.`;
 
       const result = await model.generateContent(fallbackPrompt);
       const response = await result.response;
@@ -745,8 +766,6 @@ export async function POST(request: NextRequest) {
         success: true,
         data: {
           message: text,
-          detectedLanguage: detectedLanguage.code,
-          isRTL: detectedLanguage.isRTL,
         },
       });
     }

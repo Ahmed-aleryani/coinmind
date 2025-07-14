@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { Transaction, TransactionInput, UserSettings } from '../types/transaction';
 import { ChatMessage } from '../types/chat';
 import { convertAmount, getExchangeRate } from '../utils/currency';
+import logger from '../utils/logger';
 
 const DB_PATH = process.env.DATABASE_URL || './data/finance.db';
 
@@ -115,12 +116,11 @@ export const transactionDb = {
     }
     // Debug log for transaction input (can be enabled in development)
     if (process.env.NODE_ENV === 'development') {
-      console.debug('DEBUG TRANSACTION INPUT:', transaction);
+      logger.debug({ transaction }, 'DEBUG TRANSACTION INPUT');
     }
 
     const userSettings = userSettingsDb.get() || { defaultCurrency: 'USD' };
     const defaultCurrency = userSettings.defaultCurrency || 'USD';
-    
 
     
     // Handle both legacy and new multi-currency formats
@@ -151,20 +151,31 @@ export const transactionDb = {
       // Convert if different currency
       if (originalCurrency !== defaultCurrency) {
         try {
-          console.log(`Converting ${originalAmount} ${originalCurrency} to ${defaultCurrency}`);
+          logger.info({
+            originalAmount,
+            originalCurrency,
+            defaultCurrency
+          }, `Converting ${originalAmount} ${originalCurrency} to ${defaultCurrency}`);
           conversionRate = await getExchangeRate(originalCurrency, defaultCurrency);
           convertedAmount = originalAmount * conversionRate;
           convertedCurrency = defaultCurrency;
-          console.log(`Conversion result: ${convertedAmount} ${convertedCurrency} (rate: ${conversionRate})`);
+          logger.info({
+            convertedAmount,
+            convertedCurrency,
+            conversionRate
+          }, `Conversion result: ${convertedAmount} ${convertedCurrency} (rate: ${conversionRate})`);
         } catch (error) {
-          console.error('Currency conversion failed:', error);
+                      logger.error({ error }, 'Currency conversion failed');
           // Keep original values if conversion fails
           convertedAmount = originalAmount;
           convertedCurrency = originalCurrency;
           conversionRate = 1;
         }
       } else {
-        console.log(`No conversion needed: ${originalCurrency} = ${defaultCurrency}`);
+        logger.info({
+          originalCurrency,
+          defaultCurrency
+        }, `No conversion needed: ${originalCurrency} = ${defaultCurrency}`);
       }
     }
 
@@ -443,6 +454,6 @@ if (typeof window === 'undefined') {
   try {
     initDatabase();
   } catch (error) {
-    console.error('Failed to initialize database:', error);
+    logger.error({ error }, 'Failed to initialize database');
   }
 } 

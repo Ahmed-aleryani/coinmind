@@ -1,4 +1,5 @@
-// import { franc } from 'franc';
+import { CurrencyFormatter } from './currency-formatter';
+import logger from './logger';
 
 export interface LanguageInfo {
   code: string;
@@ -66,7 +67,7 @@ export function detectLanguage(text: string): LanguageInfo {
     // Default to English
     return SUPPORTED_LANGUAGES.en;
   } catch (error) {
-    console.warn('Language detection failed:', error);
+    logger.warn({ error }, 'Language detection failed');
     return SUPPORTED_LANGUAGES.en;
   }
 }
@@ -94,50 +95,7 @@ export function getSupportedLanguages(): LanguageInfo[] {
   return Object.values(SUPPORTED_LANGUAGES);
 }
 
-/**
- * Format currency based on language
- */
-export function formatCurrencyByLanguage(amount: number, languageCode: string): string {
-  const currencyFormats: Record<string, { locale: string; currency: string }> = {
-    ar: { locale: 'ar-SA', currency: 'SAR' },
-    en: { locale: 'en-US', currency: 'USD' },
-    es: { locale: 'es-ES', currency: 'EUR' },
-    fr: { locale: 'fr-FR', currency: 'EUR' },
-    de: { locale: 'de-DE', currency: 'EUR' },
-    it: { locale: 'it-IT', currency: 'EUR' },
-    pt: { locale: 'pt-PT', currency: 'EUR' },
-    ru: { locale: 'ru-RU', currency: 'RUB' },
-    zh: { locale: 'zh-CN', currency: 'CNY' },
-    ja: { locale: 'ja-JP', currency: 'JPY' },
-    ko: { locale: 'ko-KR', currency: 'KRW' },
-    hi: { locale: 'hi-IN', currency: 'INR' },
-    tr: { locale: 'tr-TR', currency: 'TRY' },
-    nl: { locale: 'nl-NL', currency: 'EUR' },
-    pl: { locale: 'pl-PL', currency: 'PLN' },
-    sv: { locale: 'sv-SE', currency: 'SEK' },
-    da: { locale: 'da-DK', currency: 'DKK' },
-    no: { locale: 'no-NO', currency: 'NOK' },
-    fi: { locale: 'fi-FI', currency: 'EUR' },
-    he: { locale: 'he-IL', currency: 'ILS' },
-    fa: { locale: 'fa-IR', currency: 'IRR' },
-    ur: { locale: 'ur-PK', currency: 'PKR' }
-  };
-
-  const format = currencyFormats[languageCode] || currencyFormats.en;
-  
-  try {
-    return new Intl.NumberFormat(format.locale, {
-      style: 'currency',
-      currency: format.currency
-    }).format(amount);
-  } catch (error) {
-    // Fallback to USD
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
-  }
-}
+// formatCurrencyByLanguage function removed - use CurrencyFormatter.formatByLanguage() directly
 
 /**
  * Extract currency amount from text in any language
@@ -167,34 +125,11 @@ export function extractCurrencyAmount(text: string): { amount: number | null; cu
       if (!isNaN(amount)) {
         // Determine currency based on pattern or language
         const language = detectLanguage(text);
-        const currencyFormats: Record<string, string> = {
-          ar: 'SAR',
-          en: 'USD',
-          es: 'EUR',
-          fr: 'EUR',
-          de: 'EUR',
-          it: 'EUR',
-          pt: 'EUR',
-          ru: 'RUB',
-          zh: 'CNY',
-          ja: 'JPY',
-          ko: 'KRW',
-          hi: 'INR',
-          tr: 'TRY',
-          nl: 'EUR',
-          pl: 'PLN',
-          sv: 'SEK',
-          da: 'DKK',
-          no: 'NOK',
-          fi: 'EUR',
-          he: 'ILS',
-          fa: 'IRR',
-          ur: 'PKR'
-        };
+        const currencyInfo = CurrencyFormatter.getCurrencyInfo(language.code);
         
         return {
           amount,
-          currency: currencyFormats[language.code] || 'USD'
+          currency: currencyInfo.currency
         };
       }
     }

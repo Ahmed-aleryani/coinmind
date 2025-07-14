@@ -1,7 +1,9 @@
 import { format, formatDistanceToNow, isToday, isYesterday, startOfMonth, endOfMonth } from 'date-fns';
+import { CurrencyFormatter } from './currency-formatter';
 
 /**
- * Format currency amounts
+ * Format currency amounts (legacy function - use CurrencyFormatter.format instead)
+ * @deprecated Use CurrencyFormatter.format() instead
  */
 export function formatCurrency(amount: number, options: {
   showSign?: boolean;
@@ -14,46 +16,21 @@ export function formatCurrency(amount: number, options: {
     currency = 'USD'
   } = options;
 
-  const formatter = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: showCents ? 2 : 0,
-    maximumFractionDigits: showCents ? 2 : 0,
+  return CurrencyFormatter.format(amount, currency, {
+    showSign,
+    showCents,
+    currency
   });
-
-  const formatted = formatter.format(Math.abs(amount));
-  
-  if (showSign) {
-    if (amount > 0) return `+${formatted}`;
-    if (amount < 0) return `-${formatted}`;
-  }
-  
-  return formatted;
 }
 
 /**
  * Format amounts with color context
  */
-export function formatAmountWithColor(amount: number): {
+export function formatAmountWithColor(amount: number, currencyCode: string = 'USD'): {
   formatted: string;
   color: 'green' | 'red' | 'gray';
 } {
-  if (amount > 0) {
-    return {
-      formatted: formatCurrency(amount, { showSign: true }),
-      color: 'green'
-    };
-  } else if (amount < 0) {
-    return {
-      formatted: formatCurrency(amount, { showSign: true }),
-      color: 'red'
-    };
-  } else {
-    return {
-      formatted: formatCurrency(amount),
-      color: 'gray'
-    };
-  }
+  return CurrencyFormatter.formatWithColor(amount, currencyCode);
 }
 
 /**
@@ -214,24 +191,11 @@ export function getTransactionDisplayName(vendor?: string, description?: string)
 /**
  * Format transaction amount for display in lists
  */
-export function formatTransactionAmount(amount: number, type: 'income' | 'expense'): {
+export function formatTransactionAmount(amount: number, type: 'income' | 'expense', currencyCode: string = 'USD'): {
   formatted: string;
   className: string;
 } {
-  const absAmount = Math.abs(amount);
-  const formatted = formatCurrency(absAmount);
-  
-  if (type === 'income') {
-    return {
-      formatted: `+${formatted}`,
-      className: 'text-green-600 dark:text-green-400'
-    };
-  } else {
-    return {
-      formatted: `-${formatted}`,
-      className: 'text-red-600 dark:text-red-400'
-    };
-  }
+  return CurrencyFormatter.formatTransactionAmount(amount, type, currencyCode);
 }
 
 /**

@@ -1,3 +1,5 @@
+import logger from './logger';
+
 const API_URL = "https://open.er-api.com/v6/latest";
 
 // Cache rates for 1 hour
@@ -29,7 +31,11 @@ export async function getExchangeRate(
     cachedRates[to] &&
     now - lastFetch < 60 * 60 * 1000 // Cache for 1 hour
   ) {
-    console.log(`[getExchangeRate] (CACHED) ${from} -> ${to}: ${cachedRates[to]}`);
+    logger.info({ 
+      from, 
+      to, 
+      rate: cachedRates[to] 
+    }, `[getExchangeRate] (CACHED) ${from} -> ${to}: ${cachedRates[to]}`);
     return cachedRates[to];
   }
 
@@ -58,11 +64,15 @@ export async function getExchangeRate(
     lastFetch = now;
 
     const rate = data.rates[to];
-    console.log(`[getExchangeRate] ${from} -> ${to}: ${rate}`);
+    logger.info({ 
+      from, 
+      to, 
+      rate 
+    }, `[getExchangeRate] ${from} -> ${to}: ${rate}`);
     
     return rate;
   } catch (error) {
-    console.error('Error in getExchangeRate:', error);
+    logger.error({ error }, 'Error in getExchangeRate');
     throw new Error(`Failed to get exchange rate: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -81,7 +91,10 @@ export async function getGlobalRates(
     Object.keys(globalRates).length > 0 &&
     now - globalRatesLastFetch < 60 * 60 * 1000 // Cache for 1 hour
   ) {
-    console.log(`[getGlobalRates] (CACHED) Returning cached rates for base ${base}`);
+    logger.info({ 
+      base, 
+      cachedCount: Object.keys(globalRates).length 
+    }, `[getGlobalRates] (CACHED) Returning cached rates for base ${base}`);
     return { rates: { ...globalRates }, base };
   }
 
@@ -109,10 +122,13 @@ export async function getGlobalRates(
     globalRatesBase = base;
     globalRatesLastFetch = now;
 
-    console.log(`[getGlobalRates] Fetched new rates for base ${base}`);
+    logger.info({ 
+      base, 
+      ratesCount: Object.keys(data.rates).length 
+    }, `[getGlobalRates] Fetched new rates for base ${base}`);
     return { rates: { ...data.rates }, base };
   } catch (error) {
-    console.error('Error in getGlobalRates:', error);
+    logger.error({ error }, 'Error in getGlobalRates');
     throw new Error(`Failed to get global rates: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -151,10 +167,16 @@ export function convertWithGlobalRates(
     }
     
     const result = (amount / rates[from]) * rates[to];
-    console.log(`[convertWithGlobalRates] Converted ${amount} ${from} -> ${result} ${to} (via ${base})`);
+    logger.info({ 
+      amount, 
+      from, 
+      to, 
+      result, 
+      base 
+    }, `[convertWithGlobalRates] Converted ${amount} ${from} -> ${result} ${to} (via ${base})`);
     return result;
   } catch (error) {
-    console.error(`Error in convertWithGlobalRates for ${amount} ${from} to ${to}:`, error);
+    logger.error({ error, amount, from, to }, `Error in convertWithGlobalRates for ${amount} ${from} to ${to}`);
     throw new Error(`Failed to convert with global rates: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -176,12 +198,17 @@ export async function batchConvertAmounts(
     const rate = await getExchangeRate(from, to);
     const results = amounts.map(amount => {
       const result = amount * rate;
-      console.log(`[batchConvertAmounts] Converted ${amount} ${from} -> ${result} ${to}`);
+      logger.info({ 
+        amount, 
+        from, 
+        to, 
+        result 
+      }, `[batchConvertAmounts] Converted ${amount} ${from} -> ${result} ${to}`);
       return result;
     });
     return results;
   } catch (error) {
-    console.error(`Error in batchConvertAmounts for ${from} to ${to}:`, error);
+    logger.error({ error, from, to, amounts: amounts.length }, `Error in batchConvertAmounts for ${from} to ${to}`);
     throw new Error(`Failed to batch convert amounts: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -201,10 +228,15 @@ export async function convertAmount(
   try {
     const rate = await getExchangeRate(from, to);
     const result = amount * rate;
-    console.log(`[convertAmount] Converted ${amount} ${from} -> ${result} ${to}`);
+    logger.info({ 
+      amount, 
+      from, 
+      to, 
+      result 
+    }, `[convertAmount] Converted ${amount} ${from} -> ${result} ${to}`);
     return result;
   } catch (error) {
-    console.error(`Error converting ${amount} ${from} to ${to}:`, error);
+    logger.error({ error, amount, from, to }, `Error converting ${amount} ${from} to ${to}`);
     throw new Error(`Failed to convert amount: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -214,10 +246,12 @@ export async function getSupportedCurrencies(): Promise<string[]> {
     const { rates } = await getGlobalRates("USD");
     // Include base currency (USD) in the result
     const currencies = Array.from(new Set([...Object.keys(rates), "USD"])).sort();
-    console.log(`[getSupportedCurrencies] Found ${currencies.length} supported currencies`);
+    logger.info({ 
+      currencyCount: currencies.length 
+    }, `[getSupportedCurrencies] Found ${currencies.length} supported currencies`);
     return currencies;
   } catch (error) {
-    console.error('Error fetching supported currencies:', error);
+    logger.error({ error }, 'Error fetching supported currencies');
     throw new Error(`Failed to get supported currencies: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

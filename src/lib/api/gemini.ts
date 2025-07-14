@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { ParsedTransactionText, ReceiptData, TransactionCategory } from '../types/transaction';
 import { transactionDb, initDatabase } from '../db/schema';
 import { formatCurrency } from '../utils/formatters';
-import { detectLanguage, formatCurrencyByLanguage, extractCurrencyAmount } from '../utils/language-detection';
+import { detectLanguage, extractCurrencyAmount } from '../utils/language-detection';
 import logger from '../utils/logger';
 
 // Lazy-loaded Gemini AI client
@@ -916,12 +916,28 @@ Respond in ${userLanguage} with specific numbers and insights. Format currency a
       question: question.substring(0, 100)
     }, 'Financial question processing failed');
     
-    return `I apologize, but I encountered an error while analyzing your financial data. Please try rephrasing your question or try again later.`;
+    // Return error message in the user's language
+   const errorPrompt = `The following error occurred while processing the user's financial question: "${error instanceof Error ? error.message : error}". 
+Respond to the user in ${userLanguage} with a polite, empathetic message explaining that an error occurred while analyzing their financial data, and suggest they try rephrasing their question or try again later.`;
+
+    try {
+      const errorResponse = await getAiClient().models.generateContent({
+        model: MODEL_NAMES.FLASH,
+        contents: [{
+          role: 'user',
+          parts: [{ text: errorPrompt }]
+        }]
+      });
+      const errorText = errorResponse.text;
+      return errorText || "Sorry, an error occurred while processing your request. Please try again later.";
+    } catch {
+      return "Sorry, an error occurred while processing your request. Please try again later.";
+    }
   }
 }
 
 /**
- * Parse CSV data using Gemini 2.5 Pro Preview for fast and accurate processing
+ * Parse spreadsheet data (CSV or XLSX) using Gemini 2.5 Pro Preview for fast and accurate processing
  */
 export async function parseCSVWithGemini(csvText: string): Promise<{
   preview: string;
@@ -971,9 +987,9 @@ Rules:
     let response;
     let modelUsed = MODEL_NAMES.PRO;
     
-    try {
-      // Attempt CSV parsing with Pro model
-      response = await getAiClient().models.generateContent({
+          try {
+        // Attempt CSV parsing with Pro model
+        response = await getAiClient().models.generateContent({
         model: MODEL_NAMES.PRO,
         contents: [{
           role: 'user',
@@ -1384,4 +1400,3 @@ function getCategoryBreakdown(transactions: any[]) {
     .sort((a, b) => b.amount - a.amount);
 }
 
-// Test function removed - was causing noisy logs
