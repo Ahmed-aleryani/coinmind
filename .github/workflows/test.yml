@@ -27,19 +27,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: Run tests
-        run: pnpm test
-        env:
-          CI: true
-
-      - name: Test Results
-        if: always()
-        run: |
-          if [[ "${{ job.status }}" == "success" ]]; then
-            echo "✅ All tests passed! Ready to merge."
-          else
-            echo "❌ Tests failed! This will block the merge."
-            exit 1
-          fi 
+        run: pnpm test 
