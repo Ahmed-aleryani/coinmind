@@ -12,7 +12,7 @@ describe('Currency Utilities', () => {
 
     it('should throw error for unsupported currency', async () => {
       // Test with an unlikely currency code
-      await expect(getExchangeRate('USD', 'XXX')).rejects.toThrow('Currency XXX not supported');
+      await expect(getExchangeRate('USD', 'XXX')).rejects.toThrow('Failed to get exchange rate: Currency XXX not supported');
     });
   });
 
