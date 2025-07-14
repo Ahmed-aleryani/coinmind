@@ -2,6 +2,7 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { TransactionInput } from '../types/transaction';
 import { CSVPreview } from '../types/api';
+import logger from './logger';
 
 /**
  * Parse CSV file to preview data and detect columns
@@ -164,7 +165,7 @@ export function csvToTransactions(
         type: amount > 0 ? 'income' : 'expense'
       });
     } catch (error) {
-      console.warn(`Skipping row ${i}: ${error}`);
+      logger.warn({ rowIndex: i, error }, `Skipping row ${i}`);
       continue;
     }
   }
@@ -229,7 +230,7 @@ export function xlsxToTransactions(
         type: amount > 0 ? 'income' : 'expense'
       });
     } catch (error) {
-      console.warn(`Skipping row ${i}: ${error}`);
+      logger.warn({ rowIndex: i, error }, `Skipping row ${i}`);
       continue;
     }
   }
@@ -509,7 +510,7 @@ export function validateTransactionInput(input: any): TransactionInput | null {
 
     const validation = validateTransaction(transactionData);
     if (!validation.isValid) {
-      console.warn('Transaction validation failed:', validation.errors);
+      logger.warn({ validationErrors: validation.errors }, 'Transaction validation failed');
       return null;
     }
 

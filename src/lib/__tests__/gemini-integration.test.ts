@@ -5,6 +5,7 @@ import { join } from 'path';
 import { mkdirSync, unlinkSync, existsSync, readdirSync, rmdirSync } from 'fs';
 import { config } from 'dotenv';
 import { TransactionInput, TransactionType } from '../types/transaction';
+import logger from '../utils/logger';
 
 // Load environment variables from .env file
 import 'dotenv/config';
@@ -86,12 +87,16 @@ async function createAndVerifyTransaction(
   expect(storedTransaction?.currency).toBe(expectedConvertedCurrency);
   
   // Log the test result for visibility
-  console.log(`\n✅ Input: "${inputText}"`);
-  console.log(`   Original: ${storedTransaction?.originalAmount} ${storedTransaction?.originalCurrency}`);
-  console.log(`   Converted: ${storedTransaction?.convertedAmount} ${storedTransaction?.convertedCurrency}`);
-  console.log(`   Type: ${storedTransaction?.type}`);
-  console.log(`   Category: ${storedTransaction?.category}`);
-  console.log(`   Date: ${storedTransaction?.date ? formatDate(new Date(storedTransaction.date)) : 'N/A'}`);
+  logger.info({
+    inputText,
+    originalAmount: storedTransaction?.originalAmount,
+    originalCurrency: storedTransaction?.originalCurrency,
+    convertedAmount: storedTransaction?.convertedAmount,
+    convertedCurrency: storedTransaction?.convertedCurrency,
+    type: storedTransaction?.type,
+    category: storedTransaction?.category,
+    date: storedTransaction?.date ? formatDate(new Date(storedTransaction.date)) : 'N/A'
+  }, `✅ Input: "${inputText}"`);
   
   return storedTransaction;
 }
@@ -124,8 +129,8 @@ describe('Gemini API Integration Tests', () => {
     userSettingsDb.update({ defaultCurrency: 'USD' });
     
     // Verify test database is being used
-    console.log(`\n=== Using test database: ${TEST_DB_PATH} ===`);
-    console.log(`=== Default currency set to: USD ===`);
+    logger.info({ testDbPath: TEST_DB_PATH }, '=== Using test database ===');
+    logger.info({ defaultCurrency: 'USD' }, '=== Default currency set ===');
   });
 
   afterAll(() => {
@@ -138,7 +143,7 @@ describe('Gemini API Integration Tests', () => {
     try {
       if (existsSync(TEST_DB_PATH)) {
         unlinkSync(TEST_DB_PATH);
-        console.log(`\n=== Cleaned up test database: ${TEST_DB_PATH} ===`);
+        logger.info({ testDbPath: TEST_DB_PATH }, '=== Cleaned up test database ===');
       }
       
       // Remove test directory if empty
@@ -146,11 +151,11 @@ describe('Gemini API Integration Tests', () => {
         const files = readdirSync(TEST_DB_DIR);
         if (files.length === 0) {
           rmdirSync(TEST_DB_DIR);
-          console.log(`\n=== Removed empty test directory: ${TEST_DB_DIR} ===`);
+          logger.info({ testDbDir: TEST_DB_DIR }, '=== Removed empty test directory ===');
         }
       }
     } catch (error) {
-      console.error('Error cleaning up test database:', error);
+      logger.error({ error }, 'Error cleaning up test database');
     }
   });
 
@@ -318,8 +323,8 @@ describe('Gemini API Integration Tests', () => {
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
       
-      console.log('\n=== Testing Date Parsing ===');
-      console.log(`Current date: ${formatDate(today)}`);
+      logger.info('=== Testing Date Parsing ===');
+      logger.info({ currentDate: formatDate(today) }, 'Current date');
       
       expect(yesterday).toBeDefined();
       expect(yesterday.getTime()).toBeLessThan(today.getTime());

@@ -1,4 +1,5 @@
 import { CurrencyFormatter } from './currency-formatter';
+import logger from './logger';
 
 export interface LanguageInfo {
   code: string;
@@ -66,7 +67,7 @@ export function detectLanguage(text: string): LanguageInfo {
     // Default to English
     return SUPPORTED_LANGUAGES.en;
   } catch (error) {
-    console.warn('Language detection failed:', error);
+    logger.warn({ error }, 'Language detection failed');
     return SUPPORTED_LANGUAGES.en;
   }
 }

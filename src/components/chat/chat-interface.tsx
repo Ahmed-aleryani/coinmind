@@ -21,6 +21,8 @@ import { parseSpreadsheetFile } from "@/lib/utils/parsers";
 
 import TextareaAutosize from "react-textarea-autosize";
 import { Markdown } from "@/components/ui/markdown";
+import logger from "@/lib/utils/logger";
+
 
 interface MessageItemProps {
   message: Message;
@@ -512,7 +514,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       }
 
       const data = await response.json();
-      console.log("Chat API response:", data);
+      logger.info({data}, "Chat API response:");
 
       if (data.success) {
         const assistantMessage: Message = {
@@ -628,8 +630,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   };
 
   const handleCSVImport = () => {
-    console.log("CSV Import button clicked");
-    console.log("fileInputRef.current:", fileInputRef.current);
+      logger.info("CSV Import button clicked");
+      logger.info({ fileInputRef: fileInputRef.current }, "fileInputRef.current");
     fileInputRef.current?.click();
   };
 
@@ -763,11 +765,15 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const handleFileUpload = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
-    console.log("File upload triggered");
+          logger.info("File upload triggered");
     const file = event.target.files?.[0];
     if (!file) return;
 
-    console.log("File selected:", file.name, file.type, file.size);
+          logger.info({ 
+        fileName: file.name, 
+        fileType: file.type, 
+        fileSize: file.size 
+      }, "File selected");
 
     // Reset the input value to allow selecting the same file again
     event.target.value = "";
@@ -782,7 +788,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     // Validate file type
     const fileName = file.name.toLowerCase();
     if (!fileName.endsWith(".csv") && !fileName.endsWith(".xlsx") && !fileName.endsWith(".xls")) {
-      console.log("File is not a supported spreadsheet format");
+      logger.info({ fileName: file.name, fileType: file.type }, "File is not a supported spreadsheet format");
       const errorMessage: Message = {
         id: Date.now().toString(),
         content: "Please select a valid CSV or Excel file (.csv, .xlsx, .xls).",
