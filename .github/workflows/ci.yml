@@ -10,8 +10,8 @@ jobs:
   test:
     name: Test & Quality Checks
     runs-on: ubuntu-latest
+    environment: pipeline
     
-    # Set environment variables for the entire job
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       CI: true
@@ -33,13 +33,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
-
-      # Debug: Check if environment variable is available
-      - name: Debug - Check environment variables
-        run: |
-          echo "GEMINI_API_KEY is set: $([[ -n "$GEMINI_API_KEY" ]] && echo "YES" || echo "NO")"
-          echo "Environment variables starting with GEMINI:"
-          env | grep GEMINI || echo "No GEMINI variables found"
 
       # - name: Run linting
       #   run: pnpm run lint
