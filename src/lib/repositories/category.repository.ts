@@ -52,6 +52,32 @@ export class DrizzleCategoryRepository implements CategoryRepository {
     }
   }
 
+  async findAllForUser(userId: string): Promise<Category[]> {
+    try {
+      // Get user-specific categories
+      const userCategories = await this.findByUserId(userId);
+      
+      // Get global default categories
+      const globalDefaults = await this.findDefaults();
+      
+      // Combine both, with user categories taking precedence
+      const allCategories = [...globalDefaults, ...userCategories];
+      
+      // Remove duplicates (in case user has categories with same names as globals)
+      const uniqueCategories = allCategories.filter((category, index, self) => 
+        index === self.findIndex(c => 
+          c.name.toLowerCase() === category.name.toLowerCase() && 
+          c.type === category.type
+        )
+      );
+      
+      return uniqueCategories.sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error) {
+      logger.error({ error, userId }, 'Failed to find all categories for user');
+      return [];
+    }
+  }
+
   async findDefaults(): Promise<Category[]> {
     try {
       const results = await this.db

@@ -341,7 +341,7 @@ export class TransactionService {
 
   private async findOrCreateCategory(userId: string, categoryName: string, type: 'income' | 'expense'): Promise<Category> {
     try {
-      // First try to find existing category (case-insensitive)
+      // First try to find existing user-specific category (case-insensitive)
       const existingCategories = await this.categoryRepo.findByUserId(userId);
       const existingCategory = existingCategories.find(cat => 
         cat.name.toLowerCase() === categoryName.toLowerCase() && 
@@ -349,11 +349,23 @@ export class TransactionService {
       );
       
       if (existingCategory) {
-        logger.debug({ categoryId: existingCategory.categoryId, name: categoryName, type }, 'Found existing category');
+        logger.debug({ categoryId: existingCategory.categoryId, name: categoryName, type }, 'Found existing user category');
         return existingCategory;
       }
 
-      // Create new category only if it doesn't exist
+      // If no user-specific category found, check global default categories
+      const globalDefaults = await this.categoryRepo.findDefaults();
+      const globalCategory = globalDefaults.find(cat => 
+        cat.name.toLowerCase() === categoryName.toLowerCase() && 
+        cat.type === type
+      );
+      
+      if (globalCategory) {
+        logger.debug({ categoryId: globalCategory.categoryId, name: categoryName, type }, 'Found global default category');
+        return globalCategory;
+      }
+
+      // If no global category found, create a new user-specific category
       const newCategory = await this.categoryRepo.create({
         ownerId: userId,
         name: categoryName,
@@ -363,7 +375,7 @@ export class TransactionService {
         createdAt: new Date(),
       });
 
-      logger.info({ categoryId: newCategory.categoryId, name: categoryName, type }, 'Created new category');
+      logger.info({ categoryId: newCategory.categoryId, name: categoryName, type }, 'Created new user-specific category');
       return newCategory;
     } catch (error) {
       logger.error({ error, userId, categoryName, type }, 'Failed to find or create category');

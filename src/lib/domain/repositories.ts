@@ -36,6 +36,7 @@ export interface CategoryRepository {
   create(category: NewCategory): Promise<Category>;
   findById(id: number): Promise<Category | null>;
   findByUserId(userId: string): Promise<Category[]>;
+  findAllForUser(userId: string): Promise<Category[]>;
   findDefaults(): Promise<Category[]>;
   update(id: number, updates: Partial<NewCategory>): Promise<Category | null>;
   delete(id: number): Promise<boolean>;

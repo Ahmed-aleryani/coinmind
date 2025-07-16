@@ -139,46 +139,71 @@ export class DrizzleProfileRepository implements ProfileRepository {
 
   private async createDefaultCategories(userId: string): Promise<void> {
     try {
-      const defaultCategories = [
-        { name: 'Food & Dining', type: 'expense' as const, isDefault: true },
-        { name: 'Shopping', type: 'expense' as const, isDefault: true },
-        { name: 'Transportation', type: 'expense' as const, isDefault: true },
-        { name: 'Entertainment', type: 'expense' as const, isDefault: true },
-        { name: 'Bills & Utilities', type: 'expense' as const, isDefault: true },
-        { name: 'Healthcare', type: 'expense' as const, isDefault: true },
-        { name: 'Education', type: 'expense' as const, isDefault: true },
-        { name: 'Travel', type: 'expense' as const, isDefault: true },
-        { name: 'Other Expenses', type: 'expense' as const, isDefault: true },
-        { name: 'Salary', type: 'income' as const, isDefault: true },
-        { name: 'Business', type: 'income' as const, isDefault: true },
-        { name: 'Investment', type: 'income' as const, isDefault: true },
-        { name: 'Gift', type: 'income' as const, isDefault: true },
-        { name: 'Other Income', type: 'income' as const, isDefault: true },
-      ];
-
-      // Use the category repository to create default categories
       const categoryRepo = new DrizzleCategoryRepository(this.db);
       
+      // Check if global default categories exist
+      const globalDefaults = await categoryRepo.findDefaults();
+      
+      if (globalDefaults.length === 0) {
+        logger.info({ userId }, 'No global default categories found, creating them');
+        await this.ensureGlobalDefaultCategories();
+      } else {
+        logger.info({ userId, count: globalDefaults.length }, 'Global default categories already exist, no need to create user-specific ones');
+      }
+
+      // No longer create user-specific copies - users will use the global defaults
+      logger.info({ userId }, 'User will use global default categories');
+    } catch (error) {
+      logger.error({ error, userId }, 'Failed to ensure global default categories');
+      // Don't throw here - profile creation should still succeed
+    }
+  }
+
+  private async ensureGlobalDefaultCategories(): Promise<void> {
+    try {
+      const categoryRepo = new DrizzleCategoryRepository(this.db);
+      const globalDefaults = await categoryRepo.findDefaults();
+      
+      if (globalDefaults.length > 0) {
+        logger.info({ count: globalDefaults.length }, 'Global default categories already exist');
+        return;
+      }
+
+      const defaultCategories = [
+        { name: 'Food & Dining', type: 'expense' as const },
+        { name: 'Shopping', type: 'expense' as const },
+        { name: 'Transportation', type: 'expense' as const },
+        { name: 'Entertainment', type: 'expense' as const },
+        { name: 'Bills & Utilities', type: 'expense' as const },
+        { name: 'Healthcare', type: 'expense' as const },
+        { name: 'Education', type: 'expense' as const },
+        { name: 'Travel', type: 'expense' as const },
+        { name: 'Other Expenses', type: 'expense' as const },
+        { name: 'Salary', type: 'income' as const },
+        { name: 'Business', type: 'income' as const },
+        { name: 'Investment', type: 'income' as const },
+        { name: 'Gift', type: 'income' as const },
+        { name: 'Other Income', type: 'income' as const },
+      ];
+
       for (const category of defaultCategories) {
         try {
           await categoryRepo.create({
-            ownerId: userId,
+            ownerId: null, // Global category (no owner)
             name: category.name,
             type: category.type,
-            isDefault: category.isDefault,
+            isDefault: true,
             parentCategoryId: null,
             createdAt: new Date(),
           });
         } catch (error) {
-          // If category already exists, that's fine
-          logger.debug({ categoryName: category.name, userId }, 'Category may already exist');
+          logger.debug({ categoryName: category.name }, 'Global category may already exist');
         }
       }
 
-      logger.info({ userId }, 'Default categories created successfully');
+      logger.info({ count: defaultCategories.length }, 'Global default categories created successfully');
     } catch (error) {
-      logger.error({ error, userId }, 'Failed to create default categories');
-      // Don't throw here - profile creation should still succeed
+      logger.error({ error }, 'Failed to create global default categories');
     }
   }
 } 
