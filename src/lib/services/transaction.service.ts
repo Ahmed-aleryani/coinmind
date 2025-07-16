@@ -93,7 +93,9 @@ export class TransactionService {
       const newTransaction: NewTransaction = {
         ownerId: userId,
         categoryId: category.categoryId,
-        currencyCode: convertedCurrency,
+        currencyCode: convertedCurrency, // Store the converted currency (user's default)
+        originalCurrency: originalCurrency, // Store the original currency
+        originalAmount: originalAmount.toString(), // Store the original amount
         amount: absoluteAmount.toString(), // Store absolute amount
         conversionRate: conversionRate.toString(),
         convertedAmount: absoluteAmount.toString(), // Store absolute amount
@@ -388,22 +390,35 @@ export class TransactionService {
       // Get category name
       const category = await this.categoryRepo.findById(transaction.categoryId);
       
+      // Parse the stored amounts
+      const storedAmount = Number(transaction.amount);
+      const storedConvertedAmount = Number(transaction.convertedAmount);
+      const storedOriginalAmount = Number(transaction.originalAmount || transaction.amount);
+      const conversionRate = Number(transaction.conversionRate);
+      
+      // Use the stored original currency if available, otherwise use the main currency
+      const originalCurrency = transaction.originalCurrency || transaction.currencyCode;
+      const convertedCurrency = transaction.currencyCode;
+      
+      // Use the stored original amount if available, otherwise use the main amount
+      const originalAmount = storedOriginalAmount;
+      
       // Return enriched transaction with category name and properly formatted data
       return {
         id: transaction.transactionId.toString(),
         date: new Date(transaction.transactionDate),
-        amount: Number(transaction.amount),
-        currency: transaction.currencyCode,
+        amount: storedAmount, // Show the converted amount as the main amount
+        currency: convertedCurrency, // Show the converted currency as the main currency
         vendor: transaction.vendor || 'Unknown',
         description: transaction.description || '',
         category: category?.name || 'Unknown',
         type: transaction.type as 'income' | 'expense',
         // Multi-currency fields
-        originalAmount: Number(transaction.amount),
-        originalCurrency: transaction.currencyCode,
-        convertedAmount: Number(transaction.convertedAmount),
-        convertedCurrency: transaction.currencyCode,
-        conversionRate: Number(transaction.conversionRate),
+        originalAmount: originalAmount,
+        originalCurrency: originalCurrency,
+        convertedAmount: storedConvertedAmount,
+        convertedCurrency: convertedCurrency,
+        conversionRate: conversionRate,
         conversionFee: 0, // Default to 0 for now
       };
     } catch (error) {
@@ -418,8 +433,8 @@ export class TransactionService {
         description: transaction.description || '',
         category: 'Unknown',
         type: transaction.type as 'income' | 'expense',
-        originalAmount: Number(transaction.amount),
-        originalCurrency: transaction.currencyCode,
+        originalAmount: Number(transaction.originalAmount || transaction.amount),
+        originalCurrency: transaction.originalCurrency || transaction.currencyCode,
         convertedAmount: Number(transaction.convertedAmount),
         convertedCurrency: transaction.currencyCode,
         conversionRate: Number(transaction.conversionRate),

@@ -102,6 +102,7 @@ export class DrizzleCurrencyRepository implements CurrencyRepository {
         { currencyCode: 'CNY', currencyName: 'Chinese Yuan', symbol: '¥', decimalPlaces: 2 },
         { currencyCode: 'SAR', currencyName: 'Saudi Riyal', symbol: 'ر.س', decimalPlaces: 2 },
         { currencyCode: 'AED', currencyName: 'UAE Dirham', symbol: 'د.إ', decimalPlaces: 2 },
+        { currencyCode: 'EGP', currencyName: 'Egyptian Pound', symbol: 'ج.م', decimalPlaces: 2 },
       ];
 
       for (const currency of defaultCurrencies) {

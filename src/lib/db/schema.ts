@@ -37,6 +37,8 @@ export const transactions = pgTable('transactions', {
   ownerId: uuid('owner_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
   categoryId: integer('category_id').notNull().references(() => categories.categoryId),
   currencyCode: char('currency_code', { length: 3 }).notNull().references(() => currencies.currencyCode),
+  originalCurrency: char('original_currency', { length: 3 }).references(() => currencies.currencyCode),
+  originalAmount: decimal('original_amount', { precision: 14, scale: 4 }),
   amount: decimal('amount', { precision: 14, scale: 4 }).notNull(),
   conversionRate: decimal('conversion_rate', { precision: 18, scale: 8 }).notNull(),
   convertedAmount: decimal('converted_amount', { precision: 14, scale: 4 }).notNull(),

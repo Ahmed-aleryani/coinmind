@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { migrateToMultiCurrency, rollbackMigration, getMigrationStatus } from '@/lib/db/migration';
+import { db } from '@/lib/db/db';
+import { sql } from 'drizzle-orm';
 import logger from '@/lib/utils/logger';
 
 export async function GET(request: NextRequest) {
@@ -48,6 +50,27 @@ export async function POST(request: NextRequest) {
           errorCount: result.errorCount,
           errors: result.errors
         }
+      });
+    } else if (action === 'addOriginalCurrency') {
+      logger.info('Starting database migration to add originalCurrency and originalAmount columns');
+
+      // Add the originalCurrency and originalAmount columns to the transactions table
+      await db.execute(sql`
+        ALTER TABLE transactions 
+        ADD COLUMN IF NOT EXISTS original_currency CHAR(3) REFERENCES currencies(currency_code)
+      `);
+
+      await db.execute(sql`
+        ALTER TABLE transactions 
+        ADD COLUMN IF NOT EXISTS original_amount DECIMAL(14,4)
+      `);
+
+      logger.info('Migration completed successfully');
+
+      return NextResponse.json({
+        success: true,
+        message: 'Migration completed successfully',
+        result: 'originalCurrency and originalAmount columns added to transactions table'
       });
     } else {
       return NextResponse.json(

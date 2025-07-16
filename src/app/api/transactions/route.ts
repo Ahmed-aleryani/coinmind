@@ -42,8 +42,9 @@ export async function GET(request: NextRequest) {
         // Fallback to per-transaction conversion since each transaction may have different source currency
         const { convertAmount } = await import('@/lib/utils/currency');
         const convertedAmounts = await Promise.all(transactions.map(async (t: any) => {
-          const originalAmount = Number(t.amount);
-          const originalCurrency = t.currencyCode;
+          // Use original currency if available, otherwise use the main currency
+          const originalAmount = t.originalAmount || Number(t.amount);
+          const originalCurrency = t.originalCurrency || t.currency;
           if (originalCurrency === targetCurrency) {
             return originalAmount;
           }
@@ -55,6 +56,8 @@ export async function GET(request: NextRequest) {
         }));
         transactions = transactions.map((t: any, i: number) => ({
           ...t,
+          amount: convertedAmounts[i], // Update the main amount to show converted value
+          currency: targetCurrency, // Update the main currency to show target currency
           convertedAmount: convertedAmounts[i],
           convertedCurrency: targetCurrency
         }));
@@ -65,8 +68,9 @@ export async function GET(request: NextRequest) {
       }
       const { rates, base } = ratesObj;
       transactions = transactions.map((t: any) => {
-        const origAmount = Number(t.amount);
-        const origCurrency = t.currencyCode;
+        // Use original currency if available, otherwise use the main currency
+        const origAmount = t.originalAmount || Number(t.amount);
+        const origCurrency = t.originalCurrency || t.currency;
         let converted = origAmount;
         try {
           converted = convertWithGlobalRates(origAmount, origCurrency, targetCurrency, rates, base);
@@ -75,6 +79,8 @@ export async function GET(request: NextRequest) {
         }
         return {
           ...t,
+          amount: converted, // Update the main amount to show converted value
+          currency: targetCurrency, // Update the main currency to show target currency
           convertedAmount: converted,
           convertedCurrency: targetCurrency
         };
@@ -168,7 +174,7 @@ export async function POST(request: NextRequest) {
     
     logger.info({ 
       requestId, 
-      transactionId: transaction.transactionId, 
+      transactionId: transaction.id, 
       amount: transaction.amount,
       description: transaction.description 
     }, 'Transaction created successfully');

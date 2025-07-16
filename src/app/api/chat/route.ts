@@ -577,6 +577,7 @@ Your transactions have been added to your account. You can view them in the dash
             currency: transactionCurrency,
             description: transactionInfo.description,
             category: transactionInfo.category,
+            type: transactionInfo.type,
             date: transactionInfo.date,
             vendor: "Chat Input",
           });
