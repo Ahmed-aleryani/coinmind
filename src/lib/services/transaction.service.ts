@@ -75,8 +75,9 @@ export class TransactionService {
       // Map AI category to existing categories
       const mappedCategory = this.mapAiCategoryToDefault(input.category || 'Other');
       
-      // Determine transaction type
-      const transactionType = input.type || (originalAmount >= 0 ? 'income' : 'expense');
+    
+     // Determine transaction type - trust the LLM's decision, default to expense if not provided
+     const transactionType = input.type || 'expense';
 
       // Find or create category
       const category = await this.findOrCreateCategory(

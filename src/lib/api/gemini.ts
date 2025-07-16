@@ -148,7 +148,7 @@ export async function parseCSVWithGemini(csvText: string): Promise<{
         description,
         date: isNaN(date.getTime()) ? new Date() : date,
         category: 'Other',
-        type: amount >= 0 ? 'income' as const : 'expense' as const
+        type: 'expense' as const // Default to expense for CSV imports, let LLM determine for chat
       });
     } catch (error) {
       logger.warn({ error, line: i }, 'Failed to parse CSV line');
