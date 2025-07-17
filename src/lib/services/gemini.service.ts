@@ -5,6 +5,7 @@ import { detectLanguage } from '../utils/language-detection';
 import { formatCurrency } from '../utils/formatters';
 import { getExchangeRate } from '../utils/currency';
 import logger from '../utils/logger';
+import { DatabaseFunctions } from './database-functions';
 
 // Transaction categories for consistent categorization
 const CATEGORIES = [
@@ -51,6 +52,7 @@ export class GeminiService {
     FLASH: 'gemini-2.5-flash',
     PRO: 'gemini-2.5-pro-preview-06-05'
   };
+  private dbFunctions: DatabaseFunctions;
 
   constructor(
     private transactionRepo: TransactionRepository,
@@ -59,6 +61,7 @@ export class GeminiService {
     apiKey: string
   ) {
     this.aiClient = new GoogleGenAI({ apiKey });
+    this.dbFunctions = new DatabaseFunctions(transactionRepo, profileRepo, categoryRepo);
   }
 
   async parseTransactionText(text: string): Promise<ParsedTransactionText> {
@@ -296,24 +299,108 @@ RULES:
       const defaultCurrency = profile?.defaultCurrency || 'USD';
 
       // Function detection prompt
-      const functionDetectionPrompt = `You are a financial assistant. The user asked: "${question}"
+      const functionDetectionPrompt = `You are an advanced financial AI assistant with deep analytical capabilities. The user asked: "${question}"
 
-Available database functions:
-- query_transactions: Query transaction data with flexible SQL conditions
+AVAILABLE POWERFUL DATABASE FUNCTIONS:
+
+**Transaction Queries:**
+- get_transactions_by_type: List transactions by type (income/expense) with date ranges
+- get_transactions_by_vendor: List transactions by vendor with filtering
+- get_transactions_by_category: List transactions by category with date ranges
+- get_recent_transactions: List transactions for yesterday/today or last N days
+
+**Analytics & Insights:**
+- get_category_count: Get the number of unique categories used
+- get_vendor_count: Get the number of unique vendors
+- get_spending_analysis: Analyze spending patterns (daily, weekly, monthly, overall)
+- get_income_vs_expenses: Compare income and expenses with savings rate
+- get_top_spending_categories: Show top spending categories with amounts
+- get_spending_trends: Show spending trends (monthly/weekly) with change analysis
+- get_budget_analysis: Analyze spending against budget limits
+- get_spending_comparison: Compare spending between two periods
+- get_financial_health_metrics: Get comprehensive financial health score and metrics
+- get_balance: Get current balance (income - expenses)
+
+**Legacy Functions (for compatibility):**
 - get_transaction_summary: Get summary of transaction statistics
 - get_spending_by_category: Get spending breakdown by category
 - get_spending_by_vendor: Get spending breakdown by vendor
-- get_recent_transactions: Get recent transactions with optional filters
 
-DATABASE SCHEMA INFORMATION:
-- Table: transactions
+**SMART QUERY CAPABILITIES:**
+You can combine multiple functions to answer complex questions like:
+- "How much did I spend on food vs entertainment this month?"
+- "Show me my spending patterns for the last 3 months"
+- "What's my average daily spending and how does it compare to last week?"
+- "Which vendors do I spend the most with?"
+- "Am I saving enough money?"
+- "What are my top 5 spending categories?"
+- "Show me my income vs expenses for this year"
+- "How many different categories do I use?"
+- "What did I spend money on yesterday and today?"
+- "Show me my spending trends over time"
+- "Which days of the week do I spend the most?"
+- "What percentage of my income goes to bills?"
+- "Am I spending more than I'm earning?"
+- "Show me my net worth trend"
+- "What's my biggest expense category?"
+- "How much do I spend on average per transaction?"
+- "Show me transactions from specific vendors like 'Amazon' or 'Starbucks'"
+- "What's my spending breakdown by category for this month?"
+- "Show me my income sources"
+- "What's my savings rate?"
+- "Compare my spending this month vs last month"
+- "Show me my highest and lowest spending days"
+- "What categories do I spend the most on?"
+- "How much do I spend on dining vs groceries?"
+- "Show me my spending by day of the week"
+- "What's my average transaction amount?"
+- "Show me my biggest single transactions"
+- "How much do I spend on transportation vs entertainment?"
+- "What's my financial health score?"
+- "Am I over budget in any categories?"
+- "Compare my spending this quarter vs last quarter"
+- "What's my spending concentration (am I too focused on one vendor/category)?"
+- "Show me my budget analysis for this month"
+- "What's my net worth trend over the last 6 months?"
+- "How diverse is my spending across categories?"
+- "What's my biggest spending day this month?"
+- "Show me my spending efficiency (high vs low value transactions)"
+- "What percentage of my spending goes to essential vs discretionary items?"
+- "How does my spending compare to typical patterns?"
+- "What's my financial wellness score?"
+- "Show me my spending velocity (daily/weekly/monthly averages)"
+- "What are my spending hotspots (categories/vendors with highest frequency)?"
+- "How much do I spend on subscriptions vs one-time purchases?"
+- "What's my spending seasonality (monthly patterns)?"
+- "Show me my spending optimization opportunities"
+- "What's my cash flow analysis (income timing vs expense timing)?"
+- "How much do I spend on digital vs physical purchases?"
+- "What's my spending risk profile (concentration analysis)?"
+
+**CONTEXT INFORMATION:**
 - User ID: ${userId}
 - Default currency: ${defaultCurrency}
-- Transaction amount stored as converted amount in user's default currency
-- Categories available through category service
+- Current date: ${new Date().toISOString().split('T')[0]}
 - Date format: YYYY-MM-DD
+- All amounts are in user's default currency
 
-Determine what data you need to answer the user's question. Return ONLY a JSON array of function calls:
+**FUNCTION PARAMETER FORMATS:**
+- Date parameters: Use YYYY-MM-DD format (e.g., "2025-07-01")
+- For get_spending_comparison: Use period1_start, period1_end, period2_start, period2_end
+- For date ranges: Use start_date, end_date
+- For categories: Use category parameter
+- For vendors: Use vendor parameter
+- For limits: Use limit parameter (number)
+
+**ANALYSIS INSTRUCTIONS:**
+1. For comparison questions, use multiple functions and combine results
+2. For trend questions, use get_spending_trends or get_spending_analysis
+3. For category questions, use get_top_spending_categories or get_spending_by_category
+4. For vendor questions, use get_transactions_by_vendor or get_spending_by_vendor
+5. For time-based questions, use get_recent_transactions with appropriate days
+6. For insight questions, combine multiple functions for comprehensive analysis
+
+Determine what data you need to answer the user's question comprehensively. Return ONLY a JSON array of function calls:
 
 [
   {
@@ -325,7 +412,7 @@ Determine what data you need to answer the user's question. Return ONLY a JSON a
   }
 ]
 
-Current date: ${new Date().toISOString().split('T')[0]}`;
+Be smart about combining functions to provide the most insightful answer possible.`;
       
       const response = await this.aiClient.models.generateContent({
         model: this.MODEL_NAMES.FLASH,
@@ -379,12 +466,47 @@ Current date: ${new Date().toISOString().split('T')[0]}`;
       }
       
       // Generate final response
-      const finalPrompt = `Based on the function call results, provide a helpful response to the user's question: "${question}"
+      const finalPrompt = `You are an advanced financial AI assistant. The user asked: "${question}"
 
 Function Results:
 ${functionResults.map(r => `${r.name}: ${r.error ? `Error: ${r.error}` : JSON.stringify(r.result, null, 2)}`).join('\n\n')}
 
-Respond in ${userLanguage} with specific numbers and insights. Format currency amounts nicely and provide actionable insights. Be conversational and helpful.`;
+**RESPONSE REQUIREMENTS:**
+1. **Be Comprehensive**: Analyze all the data and provide deep insights
+2. **Be Specific**: Use exact numbers and percentages when available
+3. **Be Actionable**: Provide practical advice and recommendations
+4. **Be Conversational**: Use natural, friendly language in ${userLanguage}
+5. **Format Currency**: Format all amounts nicely (e.g., "$1,234.56")
+6. **Provide Context**: Compare data when possible (e.g., "This is 15% higher than last month")
+7. **Identify Patterns**: Point out interesting trends or anomalies
+8. **Give Recommendations**: Suggest ways to improve financial health
+9. **Ask Follow-up Questions**: Suggest related questions the user might want to ask
+
+**ANALYSIS GUIDELINES:**
+- If comparing categories, highlight the biggest differences
+- If showing trends, explain what the data means
+- If showing spending patterns, suggest optimization opportunities
+- If showing income vs expenses, discuss savings potential
+- If showing vendor data, identify spending habits
+- If showing time-based data, point out patterns (weekends, weekdays, etc.)
+
+**BALANCE CALCULATION RULES:**
+- Net Balance = Total Income - Total Expenses
+- NEVER add income + expenses together
+- Positive net amount means you have money left over
+- Negative net amount means you spent more than you earned
+- When asked for "balance", always use the net_amount field
+- Format balance as currency (e.g., "Your balance is $150.00")
+
+**EXAMPLE INSIGHTS TO PROVIDE:**
+- "Your biggest spending category is X, accounting for Y% of your total expenses"
+- "You're spending Z% more on X this month compared to last month"
+- "Your average daily spending is $X, which is above/below your typical pattern"
+- "You have X unique vendors, with Y being your most frequent"
+- "Your savings rate is X%, which is [good/needs improvement]"
+- "Consider reducing spending on X to save $Y per month"
+
+Respond in a helpful, insightful, and actionable way that makes the user feel empowered about their financial decisions.`;
 
       const finalResponse = await this.aiClient.models.generateContent({
         model: this.MODEL_NAMES.FLASH,
@@ -426,28 +548,97 @@ Respond in ${userLanguage} with specific numbers and insights. Format currency a
     logger.info({ functionName, args, userId }, 'Executing AI-requested function');
     
     try {
+      // Map AI parameter names to function parameter names
+      const mappedArgs = { ...args };
+      
+      // Handle parameter name mappings
+      if (args.transaction_type) {
+        mappedArgs.type = args.transaction_type;
+        delete mappedArgs.transaction_type;
+      }
+      if (args.category_name) {
+        mappedArgs.category = args.category_name;
+        delete mappedArgs.category_name;
+      }
+      if (args.vendor_name) {
+        mappedArgs.vendor = args.vendor_name;
+        delete mappedArgs.vendor_name;
+      }
+      
+      // Handle spending comparison parameter mappings
+      if (args.period1_start_date) {
+        mappedArgs.period1_start = args.period1_start_date;
+        delete mappedArgs.period1_start_date;
+      }
+      if (args.period1_end_date) {
+        mappedArgs.period1_end = args.period1_end_date;
+        delete mappedArgs.period1_end_date;
+      }
+      if (args.period2_start_date) {
+        mappedArgs.period2_start = args.period2_start_date;
+        delete mappedArgs.period2_start_date;
+      }
+      if (args.period2_end_date) {
+        mappedArgs.period2_end = args.period2_end_date;
+        delete mappedArgs.period2_end_date;
+      }
+      
       switch (functionName) {
-        case 'get_transaction_summary':
-          return await this.getTransactionSummary(userId, args);
-        case 'get_spending_by_category':
-          return await this.getSpendingByCategory(userId, args);
-        case 'get_spending_by_vendor':
-          return await this.getSpendingByVendor(userId, args);
+        case 'get_transactions_by_type':
+          return await this.dbFunctions.getTransactionsByType(userId, mappedArgs);
+        case 'get_transactions_by_vendor':
+          return await this.dbFunctions.getTransactionsByVendor(userId, mappedArgs);
+        case 'get_transactions_by_category':
+          return await this.dbFunctions.getTransactionsByCategory(userId, mappedArgs);
         case 'get_recent_transactions':
-          return await this.getRecentTransactions(userId, args);
+          return await this.dbFunctions.getRecentTransactions(userId, mappedArgs);
+        case 'get_category_count':
+          return await this.dbFunctions.getCategoryCount(userId, mappedArgs);
+        case 'get_vendor_count':
+          return await this.dbFunctions.getVendorCount(userId, mappedArgs);
+        case 'get_spending_analysis':
+          return await this.dbFunctions.getSpendingAnalysis(userId, mappedArgs);
+        case 'get_income_vs_expenses':
+          return await this.dbFunctions.getIncomeVsExpenses(userId, mappedArgs);
+        case 'get_top_spending_categories':
+          return await this.dbFunctions.getTopSpendingCategories(userId, mappedArgs);
+        case 'get_spending_trends':
+          return await this.dbFunctions.getSpendingTrends(userId, mappedArgs);
+        case 'get_budget_analysis':
+          return await this.dbFunctions.getBudgetAnalysis(userId, mappedArgs);
+        case 'get_spending_comparison':
+          return await this.dbFunctions.getSpendingComparison(userId, mappedArgs);
+        case 'get_financial_health_metrics':
+          return await this.dbFunctions.getFinancialHealthMetrics(userId, mappedArgs);
+        case 'get_balance':
+          return await this.dbFunctions.getBalance(userId, mappedArgs);
+        // Legacy/compatibility:
+        case 'get_transaction_summary':
+          return await this.getTransactionSummary(userId, mappedArgs);
+        case 'get_spending_by_category':
+          return await this.getSpendingByCategory(userId, mappedArgs);
+        case 'get_spending_by_vendor':
+          return await this.getSpendingByVendor(userId, mappedArgs);
         default:
           throw new Error(`Unknown function: ${functionName}`);
       }
     } catch (error) {
       const endTime = Date.now();
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ 
         functionName, 
         args, 
-        error: error instanceof Error ? error.message : error,
+        error: errorMessage,
         duration: endTime - startTime
       }, 'Function execution failed');
       
-      throw error;
+      // Return a more user-friendly error response
+      return {
+        success: false,
+        error: errorMessage,
+        data: null,
+        query_description: `Failed to execute ${functionName}`
+      };
     }
   }
 
