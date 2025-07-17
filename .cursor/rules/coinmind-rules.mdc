@@ -1,0 +1,6 @@
+---
+alwaysApply: true
+---
+
+In coin mind project we always use pnpm.
+The project is built using next.js + drizzle orm.

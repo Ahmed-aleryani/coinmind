@@ -79,16 +79,20 @@ interface Transaction {
 }
 
 const CATEGORIES = [
-  "Food & Drink",
+  "Food & Dining",
+  "Shopping", 
   "Transportation",
-  "Utilities",
   "Entertainment",
-  "Shopping",
+  "Bills & Utilities",
   "Healthcare",
   "Education",
-  "Income",
-  "Transfer",
-  "Other",
+  "Travel",
+  "Other Expenses",
+  "Salary",
+  "Business",
+  "Investment",
+  "Gift",
+  "Other Income",
 ];
 
 export default function Transactions() {
@@ -328,10 +332,7 @@ export default function Transactions() {
     e.preventDefault();
 
     const transactionData = {
-      amount:
-        formData.type === "expense"
-          ? -Math.abs(Number(formData.amount))
-          : Math.abs(Number(formData.amount)),
+      amount: Math.abs(Number(formData.amount)), // Always send positive amount
       currency: formData.currency,
       vendor: formData.vendor,
       description: formData.description,
@@ -568,28 +569,30 @@ export default function Transactions() {
                         >
                           {transaction.type === "income" ? "+" : "-"}
                           {formatCurrency(
-                            Math.abs(
-                              transaction.convertedAmount || transaction.amount
-                            ),
-                            { currency: defaultCurrency }
+                            Math.abs(transaction.amount),
+                            { currency: transaction.currency }
                           )}
                         </span>
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <CurrencyInfo
-                        originalAmount={transaction.originalAmount}
-                        originalCurrency={transaction.originalCurrency}
-                        convertedAmount={
-                          transaction.convertedAmount || transaction.amount
-                        }
-                        convertedCurrency={
-                          transaction.convertedCurrency || defaultCurrency
-                        }
-                        conversionRate={transaction.conversionRate}
-                        conversionFee={transaction.conversionFee}
-                        className="text-right"
-                      />
+                      {transaction.originalAmount && transaction.originalCurrency ? (
+                        <div className="flex flex-col items-end">
+                          <span className="text-sm text-muted-foreground">
+                            {formatCurrency(
+                              Math.abs(transaction.originalAmount),
+                              { currency: transaction.originalCurrency }
+                            )}
+                          </span>
+                          {transaction.conversionRate && transaction.conversionRate !== 1 && (
+                            <span className="text-xs text-muted-foreground">
+                              Rate: {transaction.conversionRate.toFixed(4)}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>

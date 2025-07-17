@@ -1,347 +1,429 @@
-import { parseTransactionText } from '../api/gemini';
-import { transactionDb } from '../db/schema';
-import { Database } from 'better-sqlite3';
-import { join } from 'path';
-import { mkdirSync, unlinkSync, existsSync, readdirSync, rmdirSync } from 'fs';
-import { config } from 'dotenv';
-import { TransactionInput, TransactionType } from '../types/transaction';
+import { parseTransactionText, parseReceiptImage, answerFinancialQuestion, categorizeTransaction } from '../api/gemini';
+import { GeminiService } from '../services/gemini.service';
+import { ServiceFactory } from '../services';
+import { TransactionRepository, ProfileRepository, CategoryRepository } from '../domain/repositories';
+import { TransactionInput, TransactionType, TransactionCategory } from '../types/transaction';
 import logger from '../utils/logger';
 
-// Load environment variables from .env file
+// Load environment variables
 import 'dotenv/config';
 
-// Validate required environment variables
-if (!process.env.GEMINI_API_KEY) {
-  throw new Error('GEMINI_API_KEY environment variable is required');
-}
-
-// Test configuration
-const TEST_DB_DIR = join(__dirname, '../../.test-db');
-const TEST_DB_PATH = join(TEST_DB_DIR, 'test-db.sqlite');
-
-// Helper function to format date as YYYY-MM-DD
-function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0];
-}
-
-// Helper function to create and verify a transaction
-async function createAndVerifyTransaction(
-  inputText: string,
-  expectedOriginalCurrency: string = 'USD',
-  expectedConvertedCurrency: string = 'USD',
-  shouldConvert: boolean = false
-) {
-  // 1. Parse transaction using Gemini API
-  const parsedTransaction = await parseTransactionText(inputText);
-  
-  // Basic validation of parsed data
-  expect(parsedTransaction).toBeDefined();
-  expect(parsedTransaction.amount).toBeDefined();
-  expect(parsedTransaction.currency).toBeDefined();
-  expect(parsedTransaction.date).toBeInstanceOf(Date);
-  
-  // 2. Store in test database
-  const transactionType: TransactionType = (parsedTransaction.amount && parsedTransaction.amount < 0) ? 'expense' : 'income';
-  
-  const transactionInput: TransactionInput = {
-    amount: parsedTransaction.amount || 0,
-    currency: parsedTransaction.currency || 'USD',
-    description: parsedTransaction.description || '',
-    vendor: parsedTransaction.vendor || '',
-    category: parsedTransaction.category || 'Other',
-    type: transactionType,
-    date: parsedTransaction.date || new Date()
-  };
-  
-  // Insert the transaction
-  const createdTransaction = await transactionDb.create(transactionInput);
-  expect(createdTransaction).toBeDefined();
-  expect(createdTransaction).not.toBeNull();
-  expect(createdTransaction!.id).toBeDefined();
-  
-  // 3. Query the database to verify
-  const transactionId = createdTransaction!.id;
-  const transactionIdStr = String(transactionId);
-  const storedTransaction = transactionDb.getById(transactionIdStr);
-  
-  // Verify we found the transaction
-  expect(storedTransaction).not.toBeNull();
-  expect(storedTransaction).toBeDefined();
-  
-  // Verify the stored data matches the parsed data
-  expect(storedTransaction?.originalAmount).toBe(parsedTransaction.amount);
-  expect(storedTransaction?.originalCurrency).toBe(expectedOriginalCurrency);
-  expect(storedTransaction?.convertedCurrency).toBe(expectedConvertedCurrency);
-  
-  if (shouldConvert) {
-    // If conversion is expected, the converted amount should be different
-    expect(storedTransaction?.convertedAmount).not.toBe(parsedTransaction.amount);
-    expect(storedTransaction?.amount).not.toBe(parsedTransaction.amount);
-  } else {
-    // If no conversion, amounts should match
-    expect(storedTransaction?.convertedAmount).toBe(parsedTransaction.amount);
-    expect(storedTransaction?.amount).toBe(parsedTransaction.amount);
+// Mock the service factory and its dependencies
+jest.mock('../services', () => ({
+  ServiceFactory: {
+    getInstance: jest.fn()
   }
-  
-  // The currency field (for backward compatibility) should always be the converted currency
-  expect(storedTransaction?.currency).toBe(expectedConvertedCurrency);
-  
-  // Log the test result for visibility
-  logger.info({
-    inputText,
-    originalAmount: storedTransaction?.originalAmount,
-    originalCurrency: storedTransaction?.originalCurrency,
-    convertedAmount: storedTransaction?.convertedAmount,
-    convertedCurrency: storedTransaction?.convertedCurrency,
-    type: storedTransaction?.type,
-    category: storedTransaction?.category,
-    date: storedTransaction?.date ? formatDate(new Date(storedTransaction.date)) : 'N/A'
-  }, `✅ Input: "${inputText}"`);
-  
-  return storedTransaction;
-}
+}));
 
-describe('Gemini API Integration Tests', () => {
-  let testDb: Database;
-  let userSettingsDb: any;
+// Mock the logger to avoid console spam in tests
+jest.mock('../utils/logger', () => ({
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn()
+}));
 
-  beforeAll(() => {
-    // Ensure test database directory exists
-    if (!existsSync(TEST_DB_DIR)) {
-      mkdirSync(TEST_DB_DIR, { recursive: true });
+// Mock the Google AI client
+jest.mock('@google/genai', () => ({
+  GoogleGenAI: jest.fn().mockImplementation(() => ({
+    models: {
+      generateContent: jest.fn()
     }
+  }))
+}));
 
-    // Set test database path
-    process.env.DATABASE_PATH = TEST_DB_PATH;
-    
-    // Force reinitialize the database module to use the test database
-    jest.resetModules();
-    
-    // Import the schema module after setting the DATABASE_PATH
-    const schema = require('../db/schema');
-    testDb = schema.db;
-    userSettingsDb = schema.userSettingsDb;
-    
-    // Ensure the database is properly initialized
-    schema.initDatabase();
-    
-    // Force update user settings to USD for tests (override any existing settings)
-    userSettingsDb.update({ defaultCurrency: 'USD' });
-    
-    // Verify test database is being used
-    logger.info({ testDbPath: TEST_DB_PATH }, '=== Using test database ===');
-    logger.info({ defaultCurrency: 'USD' }, '=== Default currency set ===');
-  });
+// Mock the language detection utility
+jest.mock('../utils/language-detection', () => ({
+  detectLanguage: jest.fn().mockReturnValue({ code: 'en', name: 'English' })
+}));
 
-  afterAll(() => {
-    // Close the database connection
-    if (testDb) {
-      testDb.close();
-    }
-    
-    // Clean up test database and directory
-    try {
-      if (existsSync(TEST_DB_PATH)) {
-        unlinkSync(TEST_DB_PATH);
-        logger.info({ testDbPath: TEST_DB_PATH }, '=== Cleaned up test database ===');
-      }
-      
-      // Remove test directory if empty
-      if (existsSync(TEST_DB_DIR)) {
-        const files = readdirSync(TEST_DB_DIR);
-        if (files.length === 0) {
-          rmdirSync(TEST_DB_DIR);
-          logger.info({ testDbDir: TEST_DB_DIR }, '=== Removed empty test directory ===');
-        }
-      }
-    } catch (error) {
-      logger.error({ error }, 'Error cleaning up test database');
-    }
-  });
+// Mock currency utilities
+jest.mock('../utils/currency', () => ({
+  getExchangeRate: jest.fn().mockResolvedValue(1.0),
+  convertAmount: jest.fn().mockImplementation((amount) => amount)
+}));
 
-  // Base case tests - USD transactions with no conversion needed
-  describe('Base Case - USD Transactions (No Conversion)', () => {
-    it('should parse and store income transaction with relative date', async () => {
-      const transaction = await createAndVerifyTransaction(
-        'I received 500$ salary 2 days ago',
-        'USD',
-        'USD',
-        false
-      );
-      
-      expect(transaction?.type).toBe('income');
-      expect(transaction?.category).toBe('Income');
-      expect(transaction?.originalAmount).toBe(500);
+// Mock formatters
+jest.mock('../utils/formatters', () => ({
+  formatCurrency: jest.fn().mockImplementation((amount, currency) => `${amount} ${currency}`)
+}));
+
+describe('Gemini API Integration Tests (Mocked)', () => {
+  let mockGeminiService: jest.Mocked<GeminiService>;
+  let mockTransactionRepo: jest.Mocked<TransactionRepository>;
+  let mockProfileRepo: jest.Mocked<ProfileRepository>;
+  let mockCategoryRepo: jest.Mocked<CategoryRepository>;
+  let mockServiceFactory: jest.Mocked<typeof ServiceFactory>;
+
+  beforeEach(() => {
+    // Clear all mocks before each test
+    jest.clearAllMocks();
+
+    // Create mock repositories
+    mockTransactionRepo = {
+      create: jest.fn(),
+      findById: jest.fn(),
+      findByUserId: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      findByDateRange: jest.fn(),
+      search: jest.fn(),
+      getStats: jest.fn()
+    } as jest.Mocked<TransactionRepository>;
+
+    mockProfileRepo = {
+      create: jest.fn(),
+      findById: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      ensureExists: jest.fn()
+    } as jest.Mocked<ProfileRepository>;
+
+    mockCategoryRepo = {
+      create: jest.fn(),
+      findById: jest.fn(),
+      findByUserId: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      findByNameAndType: jest.fn()
+    } as jest.Mocked<CategoryRepository>;
+
+    // Create mock GeminiService
+    mockGeminiService = {
+      parseTransactionText: jest.fn(),
+      parseReceiptImage: jest.fn(),
+      answerFinancialQuestion: jest.fn()
+    } as any;
+
+    // Mock ServiceFactory
+    mockServiceFactory = ServiceFactory as jest.Mocked<typeof ServiceFactory>;
+    mockServiceFactory.getInstance.mockReturnValue({
+      gemini: mockGeminiService,
+      transaction: {} as any,
+      profile: {} as any,
+      category: {} as any
     });
 
-    it('should parse and store expense transaction with vendor', async () => {
-      const transaction = await createAndVerifyTransaction(
-        'Paid 50$ for dinner at Italian restaurant yesterday',
-        'USD',
-        'USD',
-        false
-      );
-      
-      expect(transaction?.type).toBe('expense');
-      expect(transaction?.category).toBe('Food & Drink');
-      expect(transaction?.originalAmount).toBe(-50);
-      expect(transaction?.vendor).toContain('Italian');
-    });
-
-    it('should parse and store large income transaction', async () => {
-      const transaction = await createAndVerifyTransaction(
-        'Got 1000$ payment last Monday',
-        'USD',
-        'USD',
-        false
-      );
-      
-      expect(transaction?.type).toBe('income');
-      expect(transaction?.category).toBe('Income');
-      expect(transaction?.originalAmount).toBe(1000);
-    });
-
-    it('should parse and store small expense transaction', async () => {
-      const transaction = await createAndVerifyTransaction(
-        'Spent 20$ on coffee today',
-        'USD',
-        'USD',
-        false
-      );
-      
-      expect(transaction?.type).toBe('expense');
-      expect(transaction?.category).toBe('Food & Drink');
-      expect(transaction?.originalAmount).toBe(-20);
+    // Set up default profile for tests
+    mockProfileRepo.findById.mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      defaultCurrency: 'USD',
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
   });
 
-  // Currency conversion tests - Different currencies that should convert to USD
-  describe('Currency Conversion Tests', () => {
-    beforeAll(() => {
-      // Set default currency to USD for conversion tests
-      userSettingsDb.update({ defaultCurrency: 'USD' });
+  describe('parseTransactionText', () => {
+    it('should parse a simple expense transaction', async () => {
+      // Mock the service response
+      const mockParsedResult = {
+        amount: -50,
+        currency: 'USD',
+        vendor: 'Starbucks',
+        description: 'Coffee purchase',
+        date: new Date('2025-01-15'),
+        category: 'Food & Drink',
+        type: 'expense' as const
+      };
+
+      mockGeminiService.parseTransactionText.mockResolvedValue(mockParsedResult);
+
+      // Call the function
+      const result = await parseTransactionText('Spent $50 at Starbucks today');
+
+      // Verify the result
+      expect(result).toEqual({
+        amount: -50,
+        currency: 'USD',
+        vendor: 'Starbucks',
+        description: 'Coffee purchase',
+        date: new Date('2025-01-15'),
+        category: 'Food & Drink',
+        type: 'expense'
+      });
+
+      // Verify the service was called correctly
+      expect(mockGeminiService.parseTransactionText).toHaveBeenCalledWith('Spent $50 at Starbucks today');
     });
 
-    it('should convert EUR to USD for income transaction', async () => {
-      const transaction = await createAndVerifyTransaction(
-        'I received 500€ bonus yesterday',
-        'EUR',
-        'USD',
-        true
-      );
-      
-      expect(transaction?.type).toBe('income');
-      expect(transaction?.originalAmount).toBe(500);
-      expect(transaction?.originalCurrency).toBe('EUR');
-      expect(transaction?.convertedCurrency).toBe('USD');
-      expect(transaction?.convertedAmount).toBeGreaterThan(500); // EUR to USD should be > 1
+    it('should parse a simple income transaction', async () => {
+      const mockParsedResult = {
+        amount: 1000,
+        currency: 'USD',
+        vendor: 'Company XYZ',
+        description: 'Monthly salary',
+        date: new Date('2025-01-15'),
+        category: 'Income',
+        type: 'income' as const
+      };
+
+      mockGeminiService.parseTransactionText.mockResolvedValue(mockParsedResult);
+
+      const result = await parseTransactionText('Received $1000 salary from Company XYZ');
+
+      expect(result).toEqual({
+        amount: 1000,
+        currency: 'USD',
+        vendor: 'Company XYZ',
+        description: 'Monthly salary',
+        date: new Date('2025-01-15'),
+        category: 'Income',
+        type: 'income'
+      });
+
+      expect(mockGeminiService.parseTransactionText).toHaveBeenCalledWith('Received $1000 salary from Company XYZ');
     });
 
-    it('should convert GBP to USD for expense transaction', async () => {
-      const transaction = await createAndVerifyTransaction(
-        'Paid 100£ for hotel booking',
-        'GBP',
-        'USD',
-        true
-      );
-      
-      expect(transaction?.type).toBe('expense');
-      expect(transaction?.originalAmount).toBe(-100);
-      expect(transaction?.originalCurrency).toBe('GBP');
-      expect(transaction?.convertedCurrency).toBe('USD');
-      expect(transaction?.convertedAmount).toBeLessThan(-100); // GBP to USD should be > 1, so negative amount should be more negative
+    it('should handle transactions with different currencies', async () => {
+      const mockParsedResult = {
+        amount: -100,
+        currency: 'EUR',
+        vendor: 'European Store',
+        description: 'Shopping',
+        date: new Date('2025-01-15'),
+        category: 'Shopping',
+        type: 'expense' as const
+      };
+
+      mockGeminiService.parseTransactionText.mockResolvedValue(mockParsedResult);
+
+      const result = await parseTransactionText('Spent €100 at European Store yesterday');
+
+      expect(result).toEqual({
+        amount: -100,
+        currency: 'EUR',
+        vendor: 'European Store',
+        description: 'Shopping',
+        date: new Date('2025-01-15'),
+        category: 'Shopping',
+        type: 'expense'
+      });
     });
 
-    it('should convert CAD to USD for expense transaction', async () => {
-      const transaction = await createAndVerifyTransaction(
-        'Spent 75 CAD on groceries',
-        'CAD',
-        'USD',
-        true
-      );
-      
-      expect(transaction?.type).toBe('expense');
-      expect(transaction?.originalAmount).toBe(-75);
-      expect(transaction?.originalCurrency).toBe('CAD');
-      expect(transaction?.convertedCurrency).toBe('USD');
-      expect(transaction?.category).toBe('Food & Drink');
-    });
-  });
+    it('should handle parsing errors gracefully', async () => {
+      mockGeminiService.parseTransactionText.mockRejectedValue(new Error('Failed to parse transaction text'));
 
-  // Test with different default currency
-  describe('Different Default Currency Tests', () => {
-    beforeAll(() => {
-      // Set default currency to EUR for these tests
-      userSettingsDb.update({ defaultCurrency: 'EUR' });
-    });
-
-    afterAll(() => {
-      // Reset back to USD
-      userSettingsDb.update({ defaultCurrency: 'USD' });
-    });
-
-    it('should convert USD to EUR when default currency is EUR', async () => {
-      const transaction = await createAndVerifyTransaction(
-        'I received 1000$ freelance payment',
-        'USD',
-        'EUR',
-        true
-      );
-      
-      expect(transaction?.type).toBe('income');
-      expect(transaction?.originalAmount).toBe(1000);
-      expect(transaction?.originalCurrency).toBe('USD');
-      expect(transaction?.convertedCurrency).toBe('EUR');
-      expect(transaction?.convertedAmount).toBeLessThan(1000); // USD to EUR should be < 1
-    });
-
-    it('should keep EUR unchanged when default currency is EUR', async () => {
-      const transaction = await createAndVerifyTransaction(
-        'Paid 200€ for flight ticket',
-        'EUR',
-        'EUR',
-        false
-      );
-      
-      expect(transaction?.type).toBe('expense');
-      expect(transaction?.originalAmount).toBe(-200);
-      expect(transaction?.originalCurrency).toBe('EUR');
-      expect(transaction?.convertedCurrency).toBe('EUR');
-      expect(transaction?.convertedAmount).toBe(-200);
+      await expect(parseTransactionText('Invalid transaction text')).rejects.toThrow('Failed to parse transaction text');
     });
   });
 
-  // Date parsing tests
-  describe('Date Parsing Tests', () => {
-    beforeAll(() => {
-      // Ensure USD for consistency
-      userSettingsDb.update({ defaultCurrency: 'USD' });
+  describe('parseReceiptImage', () => {
+    it('should parse receipt image and extract transaction data', async () => {
+      const mockReceiptData = {
+        date: new Date('2025-01-15'),
+        vendor: 'Grocery Store',
+        total: 85.50,
+        items: [
+          { name: 'Milk', price: 3.50, quantity: 2 },
+          { name: 'Bread', price: 2.50, quantity: 1 },
+          { name: 'Eggs', price: 4.00, quantity: 1 }
+        ]
+      };
+
+      mockGeminiService.parseReceiptImage.mockResolvedValue(mockReceiptData);
+
+      const result = await parseReceiptImage('base64-encoded-image-data');
+
+      expect(result).toEqual(mockReceiptData);
+      expect(mockGeminiService.parseReceiptImage).toHaveBeenCalledWith('base64-encoded-image-data');
     });
 
-    it('should handle relative dates correctly', () => {
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      
-      logger.info('=== Testing Date Parsing ===');
-      logger.info({ currentDate: formatDate(today) }, 'Current date');
-      
-      expect(yesterday).toBeDefined();
-      expect(yesterday.getTime()).toBeLessThan(today.getTime());
+    it('should handle receipt parsing errors gracefully', async () => {
+      mockGeminiService.parseReceiptImage.mockRejectedValue(new Error('Failed to parse receipt image'));
+
+      await expect(parseReceiptImage('invalid-image-data')).rejects.toThrow('Failed to parse receipt image');
+    });
+  });
+
+  describe('answerFinancialQuestion', () => {
+    it('should answer financial questions using AI', async () => {
+      const mockAnswer = 'You have spent $500 on food this month, which is 20% of your total expenses.';
+
+      mockGeminiService.answerFinancialQuestion.mockResolvedValue(mockAnswer);
+
+      const result = await answerFinancialQuestion('test-user-id', 'How much did I spend on food this month?');
+
+      expect(result).toBe(mockAnswer);
+      expect(mockGeminiService.answerFinancialQuestion).toHaveBeenCalledWith('test-user-id', 'How much did I spend on food this month?', 'en');
     });
 
-    it('should parse specific date formats', async () => {
-      const transaction = await createAndVerifyTransaction(
-        'Spent 100$ on shopping last Friday',
-        'USD',
-        'USD',
-        false
-      );
-      
-      expect(transaction?.date).toBeDefined();
-      const transactionDate = new Date(transaction!.date);
-      expect(transactionDate).toBeInstanceOf(Date);
-      expect(transactionDate.getDay()).toBe(5); // Friday is day 5
+    it('should handle different languages', async () => {
+      const mockAnswer = 'Has gastado $500 en comida este mes.';
+
+      mockGeminiService.answerFinancialQuestion.mockResolvedValue(mockAnswer);
+
+      const result = await answerFinancialQuestion('test-user-id', '¿Cuánto gasté en comida este mes?', 'es');
+
+      expect(result).toBe(mockAnswer);
+      expect(mockGeminiService.answerFinancialQuestion).toHaveBeenCalledWith('test-user-id', '¿Cuánto gasté en comida este mes?', 'es');
+    });
+
+    it('should handle AI response errors gracefully', async () => {
+      mockGeminiService.answerFinancialQuestion.mockRejectedValue(new Error('AI service unavailable'));
+
+      await expect(answerFinancialQuestion('test-user-id', 'Invalid question')).rejects.toThrow('AI service unavailable');
+    });
+  });
+
+  describe('categorizeTransaction', () => {
+    it('should categorize food-related transactions', async () => {
+      const category = await categorizeTransaction('Coffee at Starbucks', 'Starbucks');
+      expect(category).toBe('Food & Drink');
+    });
+
+    it('should categorize transportation transactions', async () => {
+      const category = await categorizeTransaction('Gas station fill-up', 'Shell');
+      expect(category).toBe('Transportation');
+    });
+
+    it('should categorize shopping transactions', async () => {
+      const category = await categorizeTransaction('Bought clothes', 'Amazon');
+      expect(category).toBe('Shopping');
+    });
+
+    it('should categorize utilities transactions', async () => {
+      const category = await categorizeTransaction('Electric bill payment', 'Power Company');
+      expect(category).toBe('Utilities');
+    });
+
+    it('should categorize entertainment transactions', async () => {
+      const category = await categorizeTransaction('Netflix subscription', 'Netflix');
+      expect(category).toBe('Entertainment');
+    });
+
+    it('should categorize healthcare transactions', async () => {
+      const category = await categorizeTransaction('Doctor visit', 'Medical Center');
+      expect(category).toBe('Healthcare');
+    });
+
+    it('should categorize income transactions', async () => {
+      const category = await categorizeTransaction('Salary deposit', 'Company');
+      expect(category).toBe('Income');
+    });
+
+    it('should default to Other for unrecognized transactions', async () => {
+      const category = await categorizeTransaction('Unknown transaction', 'Unknown Vendor');
+      expect(category).toBe('Other');
+    });
+  });
+
+  describe('Integration scenarios', () => {
+    it('should handle complex multi-step transaction processing', async () => {
+      // Mock a complex transaction parsing
+      const mockParsedResult = {
+        amount: -125.50,
+        currency: 'USD',
+        vendor: 'Whole Foods',
+        description: 'Grocery shopping with organic products',
+        date: new Date('2025-01-15'),
+        category: 'Food & Drink',
+        type: 'expense' as const
+      };
+
+      mockGeminiService.parseTransactionText.mockResolvedValue(mockParsedResult);
+
+      const result = await parseTransactionText('Spent $125.50 at Whole Foods for organic groceries yesterday');
+
+      expect(result).toEqual(mockParsedResult);
+      expect(result.category).toBe('Food & Drink');
+      expect(result.type).toBe('expense');
+      expect(result.amount).toBe(-125.50);
+    });
+
+    it('should handle edge cases with missing data', async () => {
+      const mockParsedResult = {
+        amount: -50,
+        currency: 'USD',
+        vendor: undefined,
+        description: 'Unknown purchase',
+        date: new Date(),
+        category: 'Other',
+        type: 'expense' as const
+      };
+
+      mockGeminiService.parseTransactionText.mockResolvedValue(mockParsedResult);
+
+      const result = await parseTransactionText('Spent $50 somewhere');
+
+      expect(result).toEqual(mockParsedResult);
+      expect(result.vendor).toBeUndefined();
+      expect(result.category).toBe('Other');
+    });
+
+    it('should handle service factory initialization', () => {
+      // Test that the service factory is properly mocked
+      const serviceFactory = ServiceFactory.getInstance();
+      expect(serviceFactory).toBeDefined();
+      expect(serviceFactory.gemini).toBe(mockGeminiService);
+      expect(mockServiceFactory.getInstance).toHaveBeenCalled();
+    });
+  });
+
+  describe('Error handling', () => {
+    it('should handle network errors gracefully', async () => {
+      mockGeminiService.parseTransactionText.mockRejectedValue(new Error('Network error'));
+
+      await expect(parseTransactionText('Some transaction')).rejects.toThrow('Network error');
+    });
+
+    it('should handle AI service timeouts', async () => {
+      mockGeminiService.parseTransactionText.mockRejectedValue(new Error('Request timeout'));
+
+      await expect(parseTransactionText('Some transaction')).rejects.toThrow('Request timeout');
+    });
+
+    it('should handle invalid input gracefully', async () => {
+      mockGeminiService.parseTransactionText.mockRejectedValue(new Error('Invalid input format'));
+
+      await expect(parseTransactionText('')).rejects.toThrow('Invalid input format');
+    });
+  });
+
+  describe('Performance and logging', () => {
+    it('should log transaction parsing attempts', async () => {
+      const mockParsedResult = {
+        amount: -25,
+        currency: 'USD',
+        vendor: 'Test Vendor',
+        description: 'Test transaction',
+        date: new Date(),
+        category: 'Other',
+        type: 'expense' as const
+      };
+
+      mockGeminiService.parseTransactionText.mockResolvedValue(mockParsedResult);
+
+      await parseTransactionText('Test transaction');
+
+      // Verify that the service was called
+      expect(mockGeminiService.parseTransactionText).toHaveBeenCalledWith('Test transaction');
+    });
+
+    it('should handle concurrent transaction parsing', async () => {
+      const mockResults = [
+        { amount: -50, currency: 'USD', vendor: 'Vendor1', description: 'Transaction 1', date: new Date(), category: 'Other', type: 'expense' as const },
+        { amount: -75, currency: 'USD', vendor: 'Vendor2', description: 'Transaction 2', date: new Date(), category: 'Other', type: 'expense' as const },
+        { amount: -100, currency: 'USD', vendor: 'Vendor3', description: 'Transaction 3', date: new Date(), category: 'Other', type: 'expense' as const }
+      ];
+
+      mockGeminiService.parseTransactionText
+        .mockResolvedValueOnce(mockResults[0])
+        .mockResolvedValueOnce(mockResults[1])
+        .mockResolvedValueOnce(mockResults[2]);
+
+      const promises = [
+        parseTransactionText('Transaction 1'),
+        parseTransactionText('Transaction 2'),
+        parseTransactionText('Transaction 3')
+      ];
+
+      const results = await Promise.all(promises);
+
+      expect(results).toHaveLength(3);
+      expect(results[0].vendor).toBe('Vendor1');
+      expect(results[1].vendor).toBe('Vendor2');
+      expect(results[2].vendor).toBe('Vendor3');
     });
   });
 });

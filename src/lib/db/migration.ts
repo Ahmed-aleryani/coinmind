@@ -1,4 +1,4 @@
-import { transactionDb, userSettingsDb, initDatabase } from './schema';
+import { transactionDb, userSettingsDb, initDatabase } from './schema.sqlite';
 import logger from '../utils/logger';
 
 interface MigrationResult {

@@ -20,13 +20,7 @@ export function CurrencyInfo({
   conversionFee,
   className = "",
 }: CurrencyInfoProps) {
-  // If no conversion happened or no original amount, don't show conversion info
-  if (
-    !originalAmount ||
-    !convertedAmount ||
-    !originalCurrency ||
-    originalAmount === convertedAmount
-  ) {
+  if (!originalAmount || !originalCurrency) {
     return <div className={className}></div>;
   }
 
@@ -39,6 +33,16 @@ export function CurrencyInfo({
             currency: originalCurrency || "USD",
           })}
         </span>
+        {convertedAmount && convertedCurrency && originalAmount !== convertedAmount && (
+          <>
+            <span className="mx-1">→</span>
+            <span className="font-medium">
+              {formatCurrency(Math.abs(convertedAmount), {
+                currency: convertedCurrency,
+              })}
+            </span>
+          </>
+        )}
         {conversionRate && conversionRate !== 1 && (
           <Badge variant="outline" className="text-xs">
             Rate: {conversionRate.toFixed(4)}
