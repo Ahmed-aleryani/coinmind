@@ -216,25 +216,34 @@ export class DatabaseFunctions {
     
     const transactions = await this.transactionRepo.findByDateRange(userId, startDate, endDate);
     
+    // Filter to only include expense transactions for spending analysis
+    const expenseTransactions = [];
+    for (const transaction of transactions) {
+      const category = await this.categoryRepo.findById(transaction.categoryId);
+      if (category?.type === 'expense') {
+        expenseTransactions.push(transaction);
+      }
+    }
+    
     let analysis;
     switch (analysis_type) {
       case 'daily':
-        analysis = this.analyzeDailySpending(transactions);
+        analysis = this.analyzeDailySpending(expenseTransactions);
         break;
       case 'weekly':
-        analysis = this.analyzeWeeklySpending(transactions);
+        analysis = this.analyzeWeeklySpending(expenseTransactions);
         break;
       case 'monthly':
-        analysis = this.analyzeMonthlySpending(transactions);
+        analysis = this.analyzeMonthlySpending(expenseTransactions);
         break;
       default:
-        analysis = this.analyzeOverallSpending(transactions);
+        analysis = this.analyzeOverallSpending(expenseTransactions);
     }
     
     return {
       success: true,
       data: analysis,
-      query_description: `Spending analysis: ${analysis_type}`,
+      query_description: `Spending analysis: ${analysis_type} (expenses only)`,
       metadata: {
         date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`
       }
@@ -354,12 +363,21 @@ export class DatabaseFunctions {
     
     const transactions = await this.transactionRepo.findByDateRange(userId, startDate, endDate);
     
-    const trends = this.calculateSpendingTrends(transactions, period);
+    // Filter to only include expense transactions for spending trends
+    const expenseTransactions = [];
+    for (const transaction of transactions) {
+      const category = await this.categoryRepo.findById(transaction.categoryId);
+      if (category?.type === 'expense') {
+        expenseTransactions.push(transaction);
+      }
+    }
+    
+    const trends = this.calculateSpendingTrends(expenseTransactions, period);
     
     return {
       success: true,
       data: trends,
-      query_description: `Spending trends (${period})`,
+      query_description: `Spending trends (${period}) (expenses only)`,
       metadata: {
         total_count: 0,
         date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
@@ -444,8 +462,26 @@ export class DatabaseFunctions {
     const period1Transactions = await this.transactionRepo.findByDateRange(userId, period1Start, period1End);
     const period2Transactions = await this.transactionRepo.findByDateRange(userId, period2Start, period2End);
     
-    const period1Stats = this.analyzeOverallSpending(period1Transactions);
-    const period2Stats = this.analyzeOverallSpending(period2Transactions);
+    // Filter to only include expense transactions for spending comparison
+    const period1ExpenseTransactions = [];
+    const period2ExpenseTransactions = [];
+    
+    for (const transaction of period1Transactions) {
+      const category = await this.categoryRepo.findById(transaction.categoryId);
+      if (category?.type === 'expense') {
+        period1ExpenseTransactions.push(transaction);
+      }
+    }
+    
+    for (const transaction of period2Transactions) {
+      const category = await this.categoryRepo.findById(transaction.categoryId);
+      if (category?.type === 'expense') {
+        period2ExpenseTransactions.push(transaction);
+      }
+    }
+    
+    const period1Stats = this.analyzeOverallSpending(period1ExpenseTransactions);
+    const period2Stats = this.analyzeOverallSpending(period2ExpenseTransactions);
     
     const change = period2Stats.total_spent - period1Stats.total_spent;
     const changePercent = period1Stats.total_spent > 0 ? (change / period1Stats.total_spent) * 100 : 0;
@@ -471,7 +507,7 @@ export class DatabaseFunctions {
           trend: change > 0 ? 'increasing' : change < 0 ? 'decreasing' : 'stable'
         }
       },
-      query_description: 'Spending comparison between two periods',
+      query_description: 'Spending comparison between two periods (expenses only)',
       metadata: {
         period1_range: `${period1Start.toISOString().split('T')[0]} to ${period1End.toISOString().split('T')[0]}`,
         period2_range: `${period2Start.toISOString().split('T')[0]} to ${period2End.toISOString().split('T')[0]}`
