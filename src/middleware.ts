@@ -35,19 +35,25 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // If there's no user and the user is trying to access a protected route,
-  // redirect them to the login page
-  if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
-    const redirectUrl = new URL('/auth/login', request.url)
-    redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
+  // Define protected routes that require authentication (either real or anonymous)
+  const protectedRoutes = ['/dashboard', '/transactions']
+  const isProtectedRoute = protectedRoutes.some(route => 
+    request.nextUrl.pathname.startsWith(route)
+  )
+
+  // If accessing a protected route without authentication, redirect to home page
+  if (isProtectedRoute && !user) {
+    const redirectUrl = new URL('/', request.url)
     return NextResponse.redirect(redirectUrl)
   }
 
-  // If there's a user and they're trying to access auth pages, redirect to dashboard
-  if (user && (request.nextUrl.pathname.startsWith('/auth/login') || request.nextUrl.pathname.startsWith('/auth/signup'))) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+  // If user is authenticated and trying to access home page, allow it
+  // (home page shows chat interface for both authenticated and guest users)
+  if (request.nextUrl.pathname === '/' && user) {
+    return supabaseResponse
   }
 
+  // For all other cases, continue with the request
   return supabaseResponse
 }
 

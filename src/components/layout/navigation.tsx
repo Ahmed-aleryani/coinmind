@@ -7,16 +7,16 @@ import { cn } from "@/lib/utils";
 
 const navigation = [
   {
-    name: "Dashboard",
+    title: "Dashboard",
     href: "/dashboard",
     icon: BarChart3,
-    emoji: "📊"
+    description: "View your financial overview and analytics",
   },
   {
-    name: "Transactions",
-    href: "/transactions", 
+    title: "Transactions",
+    href: "/transactions",
     icon: List,
-    emoji: "📋"
+    description: "Manage and view your transaction history",
   },
   {
     name: "Receipts",
@@ -24,12 +24,6 @@ const navigation = [
     icon: FileText,
     emoji: "🧾"
   },
-  {
-    name: "Chat",
-    href: "/chat", 
-    icon: MessageCircle,
-    emoji: "💬"
-  }
 ];
 
 export function Navigation() {

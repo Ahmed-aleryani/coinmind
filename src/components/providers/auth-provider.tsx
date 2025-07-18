@@ -8,6 +8,8 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   signOut: () => Promise<void>
+  signInAnonymously: () => Promise<void>
+  isAnonymous: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -15,6 +17,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Check if user is anonymous (no email and provider is anonymous)
+  const isAnonymous = !user?.email && user?.app_metadata?.provider === 'anonymous'
 
   useEffect(() => {
     // Get initial session
@@ -42,6 +47,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  const signInAnonymously = async () => {
+    try {
+      const { data, error } = await supabaseClient.auth.signInAnonymously()
+      if (error) {
+        console.error("Anonymous sign-in failed:", error)
+        throw error
+      }
+      console.log("Anonymous sign-in successful:", data.user?.id)
+    } catch (error) {
+      console.error("Error signing in anonymously:", error)
+      throw error
+    }
+  }
+
   const signOut = async () => {
     try {
       await supabaseClient.auth.signOut()
@@ -51,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signOut, signInAnonymously, isAnonymous }}>
       {children}
     </AuthContext.Provider>
   )
