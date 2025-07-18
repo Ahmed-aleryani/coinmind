@@ -1,5 +1,6 @@
 import { TransactionRepository, ProfileRepository, CategoryRepository } from '../domain/repositories';
 import logger from '../utils/logger';
+import { convertAmount } from '../utils/currency';
 
 export interface QueryResult {
   success: boolean;
@@ -214,6 +215,10 @@ export class DatabaseFunctions {
     const startDate = start_date ? new Date(start_date) : new Date(0);
     const endDate = end_date ? new Date(end_date) : new Date();
     
+    // Get user's default currency
+    const profile = await this.profileRepo.findById(userId);
+    const defaultCurrency = profile?.defaultCurrency || 'USD';
+    
     const transactions = await this.transactionRepo.findByDateRange(userId, startDate, endDate);
     
     // Filter to only include expense transactions for spending analysis
@@ -228,16 +233,16 @@ export class DatabaseFunctions {
     let analysis;
     switch (analysis_type) {
       case 'daily':
-        analysis = this.analyzeDailySpending(expenseTransactions);
+        analysis = await this.analyzeDailySpending(expenseTransactions, defaultCurrency);
         break;
       case 'weekly':
-        analysis = this.analyzeWeeklySpending(expenseTransactions);
+        analysis = await this.analyzeWeeklySpending(expenseTransactions, defaultCurrency);
         break;
       case 'monthly':
-        analysis = this.analyzeMonthlySpending(expenseTransactions);
+        analysis = await this.analyzeMonthlySpending(expenseTransactions, defaultCurrency);
         break;
       default:
-        analysis = this.analyzeOverallSpending(expenseTransactions);
+        analysis = await this.analyzeOverallSpending(expenseTransactions, defaultCurrency);
     }
     
     return {
@@ -245,7 +250,8 @@ export class DatabaseFunctions {
       data: analysis,
       query_description: `Spending analysis: ${analysis_type} (expenses only)`,
       metadata: {
-        date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`
+        date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
+        currency: defaultCurrency
       }
     };
   }
@@ -256,6 +262,10 @@ export class DatabaseFunctions {
     const startDate = start_date ? new Date(start_date) : new Date(0);
     const endDate = end_date ? new Date(end_date) : new Date();
     
+    // Get user's default currency
+    const profile = await this.profileRepo.findById(userId);
+    const defaultCurrency = profile?.defaultCurrency || 'USD';
+    
     const transactions = await this.transactionRepo.findByDateRange(userId, startDate, endDate);
     
     let totalIncome = 0;
@@ -265,22 +275,23 @@ export class DatabaseFunctions {
     
     for (const transaction of transactions) {
       const category = await this.categoryRepo.findById(transaction.categoryId);
-      const amount = Number(transaction.amount);
+      // Convert amount to user's default currency
+      const convertedAmount = await this.convertTransactionAmount(transaction, defaultCurrency);
       
       if (category?.type === 'income') {
-        totalIncome += amount;
+        totalIncome += convertedAmount;
         incomeTransactions.push({
           id: transaction.transactionId,
-          amount,
+          amount: convertedAmount,
           description: transaction.description,
           date: transaction.transactionDate,
           category: category.name
         });
       } else {
-        totalExpenses += Math.abs(amount);
+        totalExpenses += Math.abs(convertedAmount);
         expenseTransactions.push({
           id: transaction.transactionId,
-          amount: Math.abs(amount),
+          amount: Math.abs(convertedAmount),
           description: transaction.description,
           date: transaction.transactionDate,
           category: category?.name || 'Unknown'
@@ -305,7 +316,8 @@ export class DatabaseFunctions {
       },
       query_description: 'Income vs Expenses comparison',
       metadata: {
-        date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`
+        date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
+        currency: defaultCurrency
       }
     };
   }
@@ -316,6 +328,10 @@ export class DatabaseFunctions {
     const startDate = start_date ? new Date(start_date) : new Date(0);
     const endDate = end_date ? new Date(end_date) : new Date();
     
+    // Get user's default currency
+    const profile = await this.profileRepo.findById(userId);
+    const defaultCurrency = profile?.defaultCurrency || 'USD';
+    
     const transactions = await this.transactionRepo.findByDateRange(userId, startDate, endDate);
     
     const categoryStats: Record<string, { amount: number; count: number }> = {};
@@ -324,7 +340,9 @@ export class DatabaseFunctions {
       const category = await this.categoryRepo.findById(transaction.categoryId);
       if (category?.type === 'expense') {
         const categoryName = category.name;
-        const amount = Math.abs(Number(transaction.amount));
+        // Convert amount to user's default currency
+        const convertedAmount = await this.convertTransactionAmount(transaction, defaultCurrency);
+        const amount = Math.abs(convertedAmount);
         
         if (!categoryStats[categoryName]) {
           categoryStats[categoryName] = { amount: 0, count: 0 };
@@ -349,7 +367,8 @@ export class DatabaseFunctions {
       data: results,
       query_description: `Top ${limit} spending categories`,
       metadata: {
-        date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`
+        date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
+        currency: defaultCurrency
       }
     };
   }
@@ -360,6 +379,10 @@ export class DatabaseFunctions {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - months);
+    
+    // Get user's default currency
+    const profile = await this.profileRepo.findById(userId);
+    const defaultCurrency = profile?.defaultCurrency || 'USD';
     
     const transactions = await this.transactionRepo.findByDateRange(userId, startDate, endDate);
     
@@ -372,7 +395,7 @@ export class DatabaseFunctions {
       }
     }
     
-    const trends = this.calculateSpendingTrends(expenseTransactions, period);
+    const trends = await this.calculateSpendingTrends(expenseTransactions, period, defaultCurrency);
     
     return {
       success: true,
@@ -381,7 +404,7 @@ export class DatabaseFunctions {
       metadata: {
         total_count: 0,
         date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
-        currency: 'USD'
+        currency: defaultCurrency
       }
     };
   }
@@ -392,6 +415,10 @@ export class DatabaseFunctions {
     const startDate = start_date ? new Date(start_date) : new Date(0);
     const endDate = end_date ? new Date(end_date) : new Date();
     
+    // Get user's default currency
+    const profile = await this.profileRepo.findById(userId);
+    const defaultCurrency = profile?.defaultCurrency || 'USD';
+    
     const transactions = await this.transactionRepo.findByDateRange(userId, startDate, endDate);
     
     // Analyze spending against budget limits
@@ -401,7 +428,9 @@ export class DatabaseFunctions {
       const category = await this.categoryRepo.findById(transaction.categoryId);
       if (category?.type === 'expense') {
         const categoryName = category.name;
-        const amount = Math.abs(Number(transaction.amount));
+        // Convert amount to user's default currency
+        const convertedAmount = await this.convertTransactionAmount(transaction, defaultCurrency);
+        const amount = Math.abs(convertedAmount);
         
         if (!categoryStats[categoryName]) {
           categoryStats[categoryName] = { spent: 0 };
@@ -434,7 +463,8 @@ export class DatabaseFunctions {
       data: results,
       query_description: 'Budget analysis by category',
       metadata: {
-        date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`
+        date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
+        currency: defaultCurrency
       }
     };
   }
@@ -459,6 +489,10 @@ export class DatabaseFunctions {
       throw new Error('Invalid date format provided');
     }
     
+    // Get user's default currency
+    const profile = await this.profileRepo.findById(userId);
+    const defaultCurrency = profile?.defaultCurrency || 'USD';
+    
     const period1Transactions = await this.transactionRepo.findByDateRange(userId, period1Start, period1End);
     const period2Transactions = await this.transactionRepo.findByDateRange(userId, period2Start, period2End);
     
@@ -480,8 +514,8 @@ export class DatabaseFunctions {
       }
     }
     
-    const period1Stats = this.analyzeOverallSpending(period1ExpenseTransactions);
-    const period2Stats = this.analyzeOverallSpending(period2ExpenseTransactions);
+    const period1Stats = await this.analyzeOverallSpending(period1ExpenseTransactions, defaultCurrency);
+    const period2Stats = await this.analyzeOverallSpending(period2ExpenseTransactions, defaultCurrency);
     
     const change = period2Stats.total_spent - period1Stats.total_spent;
     const changePercent = period1Stats.total_spent > 0 ? (change / period1Stats.total_spent) * 100 : 0;
@@ -510,7 +544,8 @@ export class DatabaseFunctions {
       query_description: 'Spending comparison between two periods (expenses only)',
       metadata: {
         period1_range: `${period1Start.toISOString().split('T')[0]} to ${period1End.toISOString().split('T')[0]}`,
-        period2_range: `${period2Start.toISOString().split('T')[0]} to ${period2End.toISOString().split('T')[0]}`
+        period2_range: `${period2Start.toISOString().split('T')[0]} to ${period2End.toISOString().split('T')[0]}`,
+        currency: defaultCurrency
       }
     };
   }
@@ -605,6 +640,10 @@ export class DatabaseFunctions {
     const startDate = start_date ? new Date(start_date) : new Date(0);
     const endDate = end_date ? new Date(end_date) : new Date();
     
+    // Get user's default currency
+    const profile = await this.profileRepo.findById(userId);
+    const defaultCurrency = profile?.defaultCurrency || 'USD';
+    
     const transactions = await this.transactionRepo.findByDateRange(userId, startDate, endDate);
     
     let totalIncome = 0;
@@ -612,12 +651,15 @@ export class DatabaseFunctions {
     
     for (const transaction of transactions) {
       const category = await this.categoryRepo.findById(transaction.categoryId);
-      const amount = Number(transaction.amount);
+      const originalAmount = Number(transaction.amount);
+      
+      // Convert amount to user's default currency
+      const convertedAmount = await this.convertTransactionAmount(transaction, defaultCurrency);
       
       if (category?.type === 'income') {
-        totalIncome += amount;
+        totalIncome += convertedAmount;
       } else {
-        totalExpenses += Math.abs(amount);
+        totalExpenses += Math.abs(convertedAmount);
       }
     }
     
@@ -633,18 +675,56 @@ export class DatabaseFunctions {
       },
       query_description: 'Current balance calculation',
       metadata: {
-        date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`
+        date_range: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
+        currency: defaultCurrency
       }
     };
   }
 
+  // Helper method to convert transaction amount to user's default currency
+  private async convertTransactionAmount(transaction: any, targetCurrency: string): Promise<number> {
+    try {
+      const originalAmount = Number(transaction.amount);
+      const originalCurrency = transaction.currency || 'USD';
+      
+      // If currencies are the same, no conversion needed
+      if (originalCurrency.toUpperCase() === targetCurrency.toUpperCase()) {
+        return originalAmount;
+      }
+      
+      // Convert the amount
+      const convertedAmount = await convertAmount(originalAmount, originalCurrency, targetCurrency);
+      logger.info({ 
+        originalAmount, 
+        originalCurrency, 
+        targetCurrency, 
+        convertedAmount 
+      }, 'Converted transaction amount');
+      
+      return convertedAmount;
+    } catch (error) {
+      logger.error({ 
+        error, 
+        transactionId: transaction.transactionId,
+        originalAmount: transaction.amount,
+        originalCurrency: transaction.currency,
+        targetCurrency 
+      }, 'Failed to convert transaction amount, using original amount');
+      
+      // Fallback to original amount if conversion fails
+      return Number(transaction.amount);
+    }
+  }
+
   // Helper methods for analysis
-  private analyzeDailySpending(transactions: any[]): any {
+  private async analyzeDailySpending(transactions: any[], defaultCurrency: string): Promise<any> {
     const dailyStats: Record<string, { amount: number; count: number }> = {};
     
     for (const transaction of transactions) {
       const date = transaction.transactionDate.toISOString().split('T')[0];
-      const amount = Math.abs(Number(transaction.amount));
+      // Convert amount to user's default currency
+      const convertedAmount = await this.convertTransactionAmount(transaction, defaultCurrency);
+      const amount = Math.abs(convertedAmount);
       
       if (!dailyStats[date]) {
         dailyStats[date] = { amount: 0, count: 0 };
@@ -663,7 +743,7 @@ export class DatabaseFunctions {
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }
 
-  private analyzeWeeklySpending(transactions: any[]): any {
+  private async analyzeWeeklySpending(transactions: any[], defaultCurrency: string): Promise<any> {
     const weeklyStats: Record<string, { amount: number; count: number }> = {};
     
     for (const transaction of transactions) {
@@ -672,7 +752,9 @@ export class DatabaseFunctions {
       weekStart.setDate(date.getDate() - date.getDay());
       const weekKey = weekStart.toISOString().split('T')[0];
       
-      const amount = Math.abs(Number(transaction.amount));
+      // Convert amount to user's default currency
+      const convertedAmount = await this.convertTransactionAmount(transaction, defaultCurrency);
+      const amount = Math.abs(convertedAmount);
       
       if (!weeklyStats[weekKey]) {
         weeklyStats[weekKey] = { amount: 0, count: 0 };
@@ -691,14 +773,16 @@ export class DatabaseFunctions {
       .sort((a, b) => new Date(a.week_start).getTime() - new Date(b.week_start).getTime());
   }
 
-  private analyzeMonthlySpending(transactions: any[]): any {
+  private async analyzeMonthlySpending(transactions: any[], defaultCurrency: string): Promise<any> {
     const monthlyStats: Record<string, { amount: number; count: number }> = {};
     
     for (const transaction of transactions) {
       const date = new Date(transaction.transactionDate);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       
-      const amount = Math.abs(Number(transaction.amount));
+      // Convert amount to user's default currency
+      const convertedAmount = await this.convertTransactionAmount(transaction, defaultCurrency);
+      const amount = Math.abs(convertedAmount);
       
       if (!monthlyStats[monthKey]) {
         monthlyStats[monthKey] = { amount: 0, count: 0 };
@@ -717,25 +801,35 @@ export class DatabaseFunctions {
       .sort((a, b) => a.month.localeCompare(b.month));
   }
 
-  private analyzeOverallSpending(transactions: any[]): any {
-    const totalSpent = transactions.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
+  private async analyzeOverallSpending(transactions: any[], defaultCurrency: string): Promise<any> {
+    let totalSpent = 0;
+    const amounts: number[] = [];
+    
+    for (const transaction of transactions) {
+      // Convert amount to user's default currency
+      const convertedAmount = await this.convertTransactionAmount(transaction, defaultCurrency);
+      const amount = Math.abs(convertedAmount);
+      totalSpent += amount;
+      amounts.push(amount);
+    }
+    
     const averageSpent = totalSpent / transactions.length || 0;
     
     return {
       total_transactions: transactions.length,
       total_spent: totalSpent,
       average_spent: averageSpent,
-      highest_transaction: Math.max(...transactions.map(t => Math.abs(Number(t.amount)))) || 0,
-      lowest_transaction: Math.min(...transactions.map(t => Math.abs(Number(t.amount)))) || 0
+      highest_transaction: Math.max(...amounts) || 0,
+      lowest_transaction: Math.min(...amounts) || 0
     };
   }
 
-  private calculateSpendingTrends(transactions: any[], period: string): any {
+  private async calculateSpendingTrends(transactions: any[], period: string, defaultCurrency: string): Promise<any> {
     // This is a simplified trend calculation
     // In a real implementation, you might want more sophisticated trend analysis
     const periodStats = period === 'monthly' 
-      ? this.analyzeMonthlySpending(transactions)
-      : this.analyzeWeeklySpending(transactions);
+      ? await this.analyzeMonthlySpending(transactions, defaultCurrency)
+      : await this.analyzeWeeklySpending(transactions, defaultCurrency);
     
     if (periodStats.length < 2) {
       return { trend: 'insufficient_data', periods: periodStats };
