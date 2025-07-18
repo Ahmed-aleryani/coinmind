@@ -56,11 +56,15 @@ import {
   LineChart as LineChartIcon,
   Eye,
   EyeOff,
+  User,
+  Lock,
 } from "lucide-react";
 import { CurrencyInfo } from "@/components/ui/currency-info";
 import { useCurrency } from "@/components/providers/currency-provider";
+import { useAuth } from "@/components/providers/auth-provider";
 import { cn } from "@/lib/utils";
 import logger from "@/lib/utils/logger";
+import Link from "next/link";
 
 interface Transaction {
   id: string;
@@ -143,6 +147,7 @@ export default function DashboardPage() {
     isCurrencyLoading,
     setDefaultCurrency,
   } = useCurrency();
+  const { user, loading: authLoading } = useAuth();
 
   const handleCurrencyChange = async (
     e: React.ChangeEvent<HTMLSelectElement>
@@ -266,95 +271,67 @@ export default function DashboardPage() {
     );
 
     setCashFlowData(cashFlowArray);
-  }, [filteredTransactions]);
+  }, [filteredTransactions, timePeriod, customDateRange]);
 
-  // Generate category stats for filtered transactions
+  // Generate category statistics
   useEffect(() => {
-    const expenseCategoryMap = new Map<
+    const categoryMap = new Map<
       string,
-      { amount: number; count: number }
-    >();
-    const incomeCategoryMap = new Map<
-      string,
-      { amount: number; count: number }
+      {
+        expenseAmount: number;
+        incomeAmount: number;
+        expenseCount: number;
+        incomeCount: number;
+      }
     >();
 
-    const expenseTransactions = filteredTransactions.filter(
-      (t) => t.type === "expense"
-    );
-    const incomeTransactions = filteredTransactions.filter(
-      (t) => t.type === "income"
-    );
-
-    // Process expense categories
-    expenseTransactions.forEach((t) => {
-      const existing = expenseCategoryMap.get(t.category) || {
-        amount: 0,
-        count: 0,
+    filteredTransactions.forEach((t) => {
+      const existing = categoryMap.get(t.category) || {
+        expenseAmount: 0,
+        incomeAmount: 0,
+        expenseCount: 0,
+        incomeCount: 0,
       };
+
       const amount = t.convertedAmount || t.amount;
-      existing.amount += Math.abs(amount);
-      existing.count += 1;
-      expenseCategoryMap.set(t.category, existing);
+
+      if (t.type === "income") {
+        existing.incomeAmount += amount;
+        existing.incomeCount += 1;
+      } else {
+        existing.expenseAmount += Math.abs(amount);
+        existing.expenseCount += 1;
+      }
+
+      categoryMap.set(t.category, existing);
     });
 
-    // Process income categories
-    incomeTransactions.forEach((t) => {
-      const existing = incomeCategoryMap.get(t.category) || {
-        amount: 0,
-        count: 0,
-      };
-      const amount = t.convertedAmount || t.amount;
-      existing.amount += amount;
-      existing.count += 1;
-      incomeCategoryMap.set(t.category, existing);
-    });
+    const fetchedTotalExpenses = filteredTransactions
+      .filter((t) => t.type === "expense")
+      .reduce((sum, t) => sum + Math.abs(t.convertedAmount || t.amount), 0);
 
-    const fetchedTotalExpenses = expenseTransactions.reduce(
-      (sum: number, t: Transaction) =>
-        sum + Math.abs(t.convertedAmount || t.amount),
-      0
-    );
-    const fetchedTotalIncome = incomeTransactions.reduce(
-      (sum: number, t: Transaction) => sum + (t.convertedAmount || t.amount),
-      0
-    );
+    const fetchedTotalIncome = filteredTransactions
+      .filter((t) => t.type === "income")
+      .reduce((sum, t) => sum + (t.convertedAmount || t.amount), 0);
 
-    // Combine expense and income categories
-    const allCategories = new Set([
-      ...expenseCategoryMap.keys(),
-      ...incomeCategoryMap.keys(),
-    ]);
-
-    const categoryArray = Array.from(allCategories)
-      .map((category) => {
-        const expenseData = expenseCategoryMap.get(category) || {
-          amount: 0,
-          count: 0,
-        };
-        const incomeData = incomeCategoryMap.get(category) || {
-          amount: 0,
-          count: 0,
-        };
-
-        return {
-          category,
-          expenseAmount: expenseData.amount,
-          incomeAmount: incomeData.amount,
-          expenseCount: expenseData.count,
-          incomeCount: incomeData.count,
-          totalAmount: expenseData.amount + incomeData.amount,
-          expensePercentage:
-            fetchedTotalExpenses > 0
-              ? (expenseData.amount / fetchedTotalExpenses) * 100
-              : 0,
-          incomePercentage:
-            fetchedTotalIncome > 0
-              ? (incomeData.amount / fetchedTotalIncome) * 100
-              : 0,
-          netAmount: incomeData.amount - expenseData.amount,
-        };
-      })
+    const categoryArray = Array.from(categoryMap.entries())
+      .map(([category, data]) => ({
+        category,
+        expenseAmount: data.expenseAmount,
+        incomeAmount: data.incomeAmount,
+        expenseCount: data.expenseCount,
+        incomeCount: data.incomeCount,
+        totalAmount: data.expenseAmount + data.incomeAmount,
+        expensePercentage:
+          fetchedTotalExpenses > 0
+            ? (data.expenseAmount / fetchedTotalExpenses) * 100
+            : 0,
+        incomePercentage:
+          fetchedTotalIncome > 0
+            ? (data.incomeAmount / fetchedTotalIncome) * 100
+            : 0,
+        netAmount: data.incomeAmount - data.expenseAmount,
+      }))
       .sort((a, b) => b.totalAmount - a.totalAmount);
 
     setCategoryStats(categoryArray);
@@ -502,6 +479,62 @@ export default function DashboardPage() {
 
     fetchData();
   }, [defaultCurrency]);
+
+  // Show loading state while auth is loading
+  if (authLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader className="space-y-0 pb-2">
+                <div className="h-4 bg-muted rounded w-1/2"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-8 bg-muted rounded w-3/4"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Show guest message if no user is authenticated
+  if (!user) {
+    return (
+      <div className="p-6 space-y-6">
+        <Card className="border-dashed">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center mb-4">
+              <User className="h-12 w-12 text-muted-foreground" />
+            </div>
+            <CardTitle className="text-2xl">Welcome to Coinmind</CardTitle>
+            <CardDescription>
+              You're currently browsing as a guest. Sign in to save your data and access all features.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button asChild>
+                <Link href="/auth/signup">
+                  Create Account
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/auth/login">
+                  Sign In
+                </Link>
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Your data will be saved locally for this session. Sign in to sync across devices.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

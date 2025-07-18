@@ -85,7 +85,10 @@ describe('Gemini API Integration Tests (Mocked)', () => {
       findByUserId: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
-      findByNameAndType: jest.fn()
+      findByNameAndType: jest.fn(),
+      findAllForUser: jest.fn(),
+      findDefaults: jest.fn(),
+      findByName: jest.fn()
     } as jest.Mocked<CategoryRepository>;
 
     // Create mock GeminiService
@@ -99,16 +102,18 @@ describe('Gemini API Integration Tests (Mocked)', () => {
     mockServiceFactory = ServiceFactory as jest.Mocked<typeof ServiceFactory>;
     mockServiceFactory.getInstance.mockReturnValue({
       gemini: mockGeminiService,
-      transaction: {} as any,
-      profile: {} as any,
-      category: {} as any
-    });
+      transactions: {} as any,
+      repositories: {} as any,
+      repositoryFactory: {} as any,
+      transactionService: {} as any,
+      geminiService: mockGeminiService
+    } as any);
 
     // Set up default profile for tests
     mockProfileRepo.findById.mockResolvedValue({
       id: 'test-user-id',
-      email: 'test@example.com',
       defaultCurrency: 'USD',
+      emailVerified: false,
       createdAt: new Date(),
       updatedAt: new Date()
     });
