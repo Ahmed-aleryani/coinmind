@@ -734,75 +734,105 @@ export default function Transactions() {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="amount">Amount</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formData.amount}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, amount: e.target.value }))
-                  }
-                  required
-                />
-              </div>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Basic Information</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="amount">Amount *</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={formData.amount}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, amount: e.target.value }))
+                    }
+                    required
+                    className="text-lg"
+                  />
+                </div>
 
-              <div>
-                <Label htmlFor="currency">Currency</Label>
-                <Select
-                  value={formData.currency}
-                  onValueChange={(value) =>
-                    setFormData((prev) => ({ ...prev, currency: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {supportedCurrencies?.map((currency) => (
-                      <SelectItem key={currency} value={currency}>
-                        {currency}
-                      </SelectItem>
-                    )) || [
-                      "USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "SAR", "AED", "YER"
-                    ].map(code => (
-                      <SelectItem key={code} value={code}>
-                        {code}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="type">Type</Label>
-                <Select
-                  value={formData.type}
-                  onValueChange={(value: "income" | "expense") =>
-                    setFormData((prev) => ({ ...prev, type: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="expense">Expense</SelectItem>
-                    <SelectItem value="income">Income</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="space-y-2">
+                  <Label htmlFor="type">Type *</Label>
+                  <Select
+                    value={formData.type}
+                    onValueChange={(value: "income" | "expense") =>
+                      setFormData((prev) => ({ ...prev, type: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="expense">💸 Expense</SelectItem>
+                      <SelectItem value="income">💰 Income</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="vendor">Vendor</Label>
+            {/* Transaction Details */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Transaction Details</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category *</Label>
+                  <Select
+                    value={formData.category}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, category: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {getCategoryEmoji(category)} {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="currency">Currency</Label>
+                  <Select
+                    value={formData.currency}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, currency: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {supportedCurrencies?.map((currency) => (
+                        <SelectItem key={currency} value={currency}>
+                          {currency}
+                        </SelectItem>
+                      )) || [
+                        "USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "SAR", "AED", "YER"
+                      ].map(code => (
+                        <SelectItem key={code} value={code}>
+                          {code}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="vendor">Vendor *</Label>
                 <Input
                   id="vendor"
-                  placeholder="e.g., Starbucks"
+                  placeholder="e.g., Starbucks, Amazon, etc."
                   value={formData.vendor}
                   onChange={(e) =>
                     setFormData((prev) => ({ ...prev, vendor: e.target.value }))
@@ -811,58 +841,39 @@ export default function Transactions() {
                 />
               </div>
 
-              <div>
-                <Label htmlFor="category">Category</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) =>
-                    setFormData((prev) => ({ ...prev, category: value }))
+              <div className="space-y-2">
+                <Label htmlFor="description">Description *</Label>
+                <Textarea
+                  id="description"
+                  placeholder="Brief description of the transaction..."
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {getCategoryEmoji(category)} {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  required
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="date">Date *</Label>
+                <Input
+                  id="date"
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, date: e.target.value }))
+                  }
+                  required
+                />
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                placeholder="Transaction description..."
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    description: e.target.value,
-                  }))
-                }
-                required
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="date">Date</Label>
-              <Input
-                id="date"
-                type="date"
-                value={formData.date}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, date: e.target.value }))
-                }
-                required
-              />
-            </div>
-
-            <DialogFooter>
+            {/* Action Buttons */}
+            <DialogFooter className="flex gap-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
@@ -870,11 +881,16 @@ export default function Transactions() {
                   setIsAddDialogOpen(false);
                   setIsEditDialogOpen(false);
                 }}
+                className="flex-1"
               >
                 Cancel
               </Button>
-              <Button type="submit">
-                {editingTransaction ? "Update" : "Add"} Transaction
+              <Button 
+                type="submit" 
+                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                size="lg"
+              >
+                {editingTransaction ? "Update" : "Save"} Transaction
               </Button>
             </DialogFooter>
           </form>
