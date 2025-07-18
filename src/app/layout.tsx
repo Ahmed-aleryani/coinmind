@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { CurrencyProvider } from "@/components/providers/currency-provider";
 import { Header } from "@/components/layout/header";
 import { Navigation } from "@/components/layout/navigation";
 import { Toaster } from "@/components/ui/sonner";
@@ -46,14 +47,16 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <div className="relative flex min-h-screen flex-col">
-            <Header />
-            <main className="flex-1 pb-16 md:pb-0">
-              {children}
-            </main>
-            <Navigation />
-          </div>
-          <Toaster />
+          <CurrencyProvider>
+            <div className="relative flex min-h-screen flex-col">
+              <Header />
+              <main className="flex-1 pb-16 md:pb-0">
+                {children}
+              </main>
+              <Navigation />
+            </div>
+            <Toaster />
+          </CurrencyProvider>
         </ThemeProvider>
       </body>
     </html>

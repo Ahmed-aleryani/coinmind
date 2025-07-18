@@ -8,6 +8,7 @@ import { formatCurrency, formatDate, getCategoryEmoji } from '@/lib/utils/format
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { TrendingUp, TrendingDown, DollarSign, Calendar, Target, ArrowUpDown } from 'lucide-react';
 import { CurrencyInfo } from '@/components/ui/currency-info';
+import { useCurrency } from '@/components/providers/currency-provider';
 import logger from '@/lib/utils/logger';
 
 interface Transaction {
@@ -48,40 +49,15 @@ export default function DashboardPage() {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [defaultCurrency, setDefaultCurrency] = useState('USD');
-  const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
-  const [isCurrencyLoading, setIsCurrencyLoading] = useState(false);
+  const { defaultCurrency, supportedCurrencies, isCurrencyLoading, setDefaultCurrency } = useCurrency();
 
-  // Fetch supported currencies and user default currency
-  useEffect(() => {
-    const fetchCurrencies = async () => {
-      try {
-        setIsCurrencyLoading(true);
-        const res = await fetch('/api/user-currency');
-        const data = await res.json();
-        setDefaultCurrency(data.defaultCurrency || 'USD');
-        const curRes = await fetch('/api/currencies');
-        const curData = await curRes.json();
-        setSupportedCurrencies(curData.currencies || ['USD']);
-      } catch (e) {
-        setSupportedCurrencies(['USD']);
-      } finally {
-        setIsCurrencyLoading(false);
-      }
-    };
-    fetchCurrencies();
-  }, []);
+
 
   const handleCurrencyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newCurrency = e.target.value;
     logger.info({ newCurrency }, 'Currency changed in dashboard');
-    setDefaultCurrency(newCurrency);
     setIsLoading(true); // Show loading state while refetching data
-    await fetch('/api/user-currency', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ defaultCurrency: newCurrency })
-    });
+    await setDefaultCurrency(newCurrency);
     logger.info({ newCurrency }, 'Currency update completed, useEffect should trigger');
     // The useEffect will automatically refetch data when defaultCurrency changes
   };

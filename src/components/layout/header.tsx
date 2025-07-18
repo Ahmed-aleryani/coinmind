@@ -6,6 +6,7 @@ import { Menu, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCurrency } from "@/components/providers/currency-provider";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: "📊" },
@@ -15,6 +16,12 @@ const navigation = [
 export function Header() {
   const { theme, setTheme } = useTheme();
   const pathname = usePathname();
+  const { defaultCurrency, supportedCurrencies, isCurrencyLoading, setDefaultCurrency } = useCurrency();
+
+  const handleCurrencyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newCurrency = e.target.value;
+    await setDefaultCurrency(newCurrency);
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -109,6 +116,18 @@ export function Header() {
 
         {/* Right side actions */}
         <div className="flex items-center space-x-2 ml-auto">
+          {/* Currency Selector */}
+          <select
+            value={defaultCurrency || 'USD'}
+            onChange={handleCurrencyChange}
+            className="border rounded px-2 py-1 text-xs bg-background text-foreground"
+            disabled={isCurrencyLoading}
+          >
+            {(supportedCurrencies.length > 0 ? supportedCurrencies : ['USD']).map(cur => (
+              <option key={cur} value={cur}>{cur}</option>
+            ))}
+          </select>
+          
           {/* Theme Toggle */}
           <Button
             variant="ghost"

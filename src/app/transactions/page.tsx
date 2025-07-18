@@ -59,6 +59,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CurrencyInfo } from "@/components/ui/currency-info";
+import { useCurrency } from "@/components/providers/currency-provider";
+import logger from "@/lib/utils/logger";
 
 interface Transaction {
   id: string;
@@ -109,9 +111,7 @@ export default function Transactions() {
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [defaultCurrency, setDefaultCurrency] = useState("USD");
-  const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
-  const [isCurrencyLoading, setIsCurrencyLoading] = useState(false);
+  const { defaultCurrency, supportedCurrencies, isCurrencyLoading } = useCurrency();
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(0);
@@ -133,38 +133,9 @@ export default function Transactions() {
     date: new Date().toISOString().split("T")[0],
   });
 
-  // Fetch supported currencies and user default currency
-  useEffect(() => {
-    const fetchCurrencies = async () => {
-      try {
-        setIsCurrencyLoading(true);
-        const res = await fetch("/api/user-currency");
-        const data = await res.json();
-        setDefaultCurrency(data.defaultCurrency || "USD");
-        const curRes = await fetch("/api/currencies");
-        const curData = await curRes.json();
-        setSupportedCurrencies(curData.currencies || ["USD"]);
-      } catch (e) {
-        setSupportedCurrencies(["USD"]);
-      } finally {
-        setIsCurrencyLoading(false);
-      }
-    };
-    fetchCurrencies();
-  }, []);
 
-  const handleCurrencyChange = async (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const newCurrency = e.target.value;
-    setDefaultCurrency(newCurrency);
-    await fetch("/api/user-currency", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ defaultCurrency: newCurrency }),
-    });
-    window.location.reload();
-  };
+
+
 
   const fetchTransactions = async (page = 0, append = false) => {
     try {
@@ -174,9 +145,10 @@ export default function Transactions() {
         setIsLoadingMore(true);
       }
 
+      logger.info({ defaultCurrency, page, append }, 'Fetching transactions for currency');
       const offset = page * pageSize;
       const response = await fetch(
-        `/api/transactions?currency=${defaultCurrency}&limit=${pageSize}&offset=${offset}`
+        `/api/transactions?currency=${defaultCurrency}&limit=${pageSize}&offset=${offset}&t=${Date.now()}`
       );
       const data = await response.json();
 
@@ -185,6 +157,13 @@ export default function Transactions() {
           ...t,
           date: new Date(t.date),
         }));
+        
+        logger.info({ 
+          defaultCurrency, 
+          success: data.success, 
+          transactionCount: data.data?.length || 0,
+          sampleTransaction: parsedTransactions[0]
+        }, 'Transactions API response received');
 
         if (append) {
           // Append to existing transactions
@@ -384,6 +363,13 @@ export default function Transactions() {
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + Math.abs(t.convertedAmount || t.amount), 0);
 
+  logger.info({
+    totalIncome,
+    totalExpenses,
+    currency: defaultCurrency,
+    transactionCount: filteredTransactions.length
+  }, 'Transactions calculations completed');
+
   if (isLoading) {
     return (
       <div className="p-6">
@@ -523,7 +509,7 @@ export default function Transactions() {
                 <TableHead>Category</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead className="text-right">Amount ({defaultCurrency})</TableHead>
-                <TableHead className="text-right">Original</TableHead>
+                <TableHead className="text-right">Original Amount</TableHead>
                 <TableHead className="w-[70px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -559,21 +545,19 @@ export default function Transactions() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex flex-col items-end">
-                        <span
-                          className={`font-bold ${
-                            transaction.type === "income"
-                              ? "text-green-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {transaction.type === "income" ? "+" : "-"}
-                          {formatCurrency(
-                            Math.abs(transaction.amount),
-                            { currency: transaction.currency }
-                          )}
-                        </span>
-                      </div>
+                      <span
+                        className={`font-bold ${
+                          transaction.type === "income"
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {transaction.type === "income" ? "+" : "-"}
+                        {formatCurrency(
+                          Math.abs(transaction.convertedAmount || transaction.amount),
+                          { currency: defaultCurrency }
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right">
                       {transaction.originalAmount && transaction.originalCurrency ? (
