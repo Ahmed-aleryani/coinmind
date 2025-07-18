@@ -489,6 +489,7 @@ Your transactions have been added to your account. You can view them in the dash
               parsedTransaction.type ||
               (parsedTransaction.amount > 0 ? "income" : "expense"),
             date: parsedTransaction.date, // Preserve the parsed date
+            vendor: parsedTransaction.vendor,
           } as {
             description: string;
             amount: number;
@@ -496,6 +497,7 @@ Your transactions have been added to your account. You can view them in the dash
             category: TransactionCategory;
             type: "income" | "expense";
             date?: Date;
+            vendor?: string;
           };
         }
       } catch (parseError) {
@@ -569,7 +571,7 @@ Your transactions have been added to your account. You can view them in the dash
               ((transactionInfo.amount > 0 ? "income" : "expense") as
                 | "income"
                 | "expense"),
-            vendor: "Chat Input",
+            vendor: transactionInfo.vendor || "Unknown",
           };
 
           await services.transactions.createTransaction(userId, {
@@ -579,7 +581,7 @@ Your transactions have been added to your account. You can view them in the dash
             category: transactionInfo.category,
             type: transactionInfo.type,
             date: transactionInfo.date,
-            vendor: "Chat Input",
+            vendor: transactionInfo.vendor || "Unknown",
           });
           transactionAdded = true;
 
