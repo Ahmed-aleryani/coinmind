@@ -445,10 +445,6 @@ Your transactions have been added to your account. You can view them in the dash
       const { services, userId } = await getServices();
       const transactions = await services.transactions.getTransactions(userId, 1000);
 
-      const totalBalance = transactions.reduce(
-        (sum: number, t: any) => sum + (t.amount || 0),
-        0
-      );
       const income = transactions
         .filter((t: any) => (t.amount || 0) > 0)
         .reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
@@ -457,6 +453,7 @@ Your transactions have been added to your account. You can view them in the dash
           .filter((t: any) => (t.amount || 0) < 0)
           .reduce((sum: number, t: any) => sum + (t.amount || 0), 0)
       );
+      const totalBalance = income - expenses;
 
       // Get user's default currency for formatting
       const profile = await services.repositories.profiles.findById(userId);

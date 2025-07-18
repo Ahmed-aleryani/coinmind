@@ -8,6 +8,7 @@ import { formatCurrency, formatDate, getCategoryEmoji } from '@/lib/utils/format
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { TrendingUp, TrendingDown, DollarSign, Calendar, Target, ArrowUpDown } from 'lucide-react';
 import { CurrencyInfo } from '@/components/ui/currency-info';
+import logger from '@/lib/utils/logger';
 
 interface Transaction {
   id: string;
@@ -73,14 +74,16 @@ export default function DashboardPage() {
 
   const handleCurrencyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newCurrency = e.target.value;
+    logger.info({ newCurrency }, 'Currency changed in dashboard');
     setDefaultCurrency(newCurrency);
+    setIsLoading(true); // Show loading state while refetching data
     await fetch('/api/user-currency', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ defaultCurrency: newCurrency })
     });
-    // Optionally, refetch dashboard data here if needed
-    window.location.reload();
+    logger.info({ newCurrency }, 'Currency update completed, useEffect should trigger');
+    // The useEffect will automatically refetch data when defaultCurrency changes
   };
 
   // Summary stats - use converted amounts for calculations
@@ -94,19 +97,45 @@ export default function DashboardPage() {
   
   const netAmount = totalIncome - totalExpenses;
   const savingsRate = totalIncome > 0 ? ((netAmount / totalIncome) * 100) : 0;
+  
+  logger.info({
+    totalIncome,
+    totalExpenses,
+    netAmount,
+    savingsRate,
+    currency: defaultCurrency,
+    transactionCount: transactions.length
+  }, 'Dashboard calculations completed');
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch transactions converted to the selected default currency
-        const response = await fetch(`/api/transactions?currency=${defaultCurrency}`);
+        logger.info({ defaultCurrency }, 'Fetching dashboard data for currency');
+        // Fetch transactions converted to the selected default currency with cache busting
+        const response = await fetch(`/api/transactions?currency=${defaultCurrency}&t=${Date.now()}`);
         const data = await response.json();
+        
+        logger.info({ 
+          defaultCurrency, 
+          success: data.success, 
+          transactionCount: data.data?.length || 0 
+        }, 'Dashboard API response received');
         
         if (data.success) {
           const parsedTransactions = data.data.map((t: any) => ({
             ...t,
             date: new Date(t.date)
           }));
+          logger.debug({ 
+            defaultCurrency, 
+            transactionCount: parsedTransactions.length,
+            sampleTransaction: parsedTransactions[0],
+            incomeTransactions: parsedTransactions.filter((t: Transaction) => t.type === 'income').map((t: Transaction) => ({
+              amount: t.convertedAmount || t.amount,
+              originalAmount: t.originalAmount,
+              originalCurrency: t.originalCurrency
+            }))
+          }, 'Parsed transactions for dashboard');
           setTransactions(parsedTransactions);
           
           // Generate monthly data (last 6 months)
