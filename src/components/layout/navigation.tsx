@@ -7,22 +7,16 @@ import { cn } from "@/lib/utils";
 
 const navigation = [
   {
-    title: "Dashboard",
+    name: "Dashboard",
     href: "/dashboard",
     icon: BarChart3,
     description: "View your financial overview and analytics",
   },
   {
-    title: "Transactions",
+    name: "Transactions",
     href: "/transactions",
     icon: List,
     description: "Manage and view your transaction history",
-  },
-  {
-    name: "Receipts",
-    href: "/receipts", 
-    icon: FileText,
-    emoji: "🧾"
   },
 ];
 
@@ -32,7 +26,7 @@ export function Navigation() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t supports-[backdrop-filter]:bg-background/60 md:hidden">
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-4 h-16">
+        <div className="grid grid-cols-2 h-16">
           {navigation.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
@@ -41,6 +35,7 @@ export function Navigation() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => console.log('Navigating to:', item.href)}
                 className={cn(
                   "flex flex-col items-center justify-center space-y-1 text-xs transition-all duration-200 rounded-lg mx-1 my-2",
                   isActive 

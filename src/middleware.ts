@@ -41,10 +41,10 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith(route)
   )
 
-  // If accessing a protected route without authentication, redirect to home page
-  if (isProtectedRoute && !user) {
-    const redirectUrl = new URL('/', request.url)
-    return NextResponse.redirect(redirectUrl)
+  // For protected routes, allow access and let client-side handle authentication
+  // The client will redirect to home if no user is found
+  if (isProtectedRoute) {
+    return supabaseResponse
   }
 
   // If user is authenticated and trying to access home page, allow it

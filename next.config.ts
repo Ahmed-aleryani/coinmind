@@ -27,17 +27,13 @@ const nextConfig: NextConfig = {
     config.externals = config.externals || [];
     if (!isServer) {
       config.externals.push({
-        'postgres': 'postgres',
-        'better-sqlite3': 'better-sqlite3',
         'pg': 'pg',
       });
     }
 
     return config;
   },
-  experimental: {
-    serverComponentsExternalPackages: ['postgres', 'better-sqlite3', 'pg'],
-  },
+  serverExternalPackages: ['pg'],
 };
 
 export default nextConfig;

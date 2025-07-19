@@ -146,7 +146,7 @@ export default function Transactions() {
     );
   }
 
-  // Redirect if not authenticated
+  // Redirect if not authenticated (no user at all)
   if (!user) {
     return null; // Component will unmount and redirect
   }
