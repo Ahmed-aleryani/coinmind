@@ -85,19 +85,142 @@ export function formatCategory(category: string): string {
  */
 export function getCategoryEmoji(category: string): string {
   const emojiMap: Record<string, string> = {
+    // Food & Dining
+    'Food & Dining': '🍽️',
     'Food & Drink': '🍽️',
-    'Transportation': '🚗',
-    'Utilities': '⚡',
-    'Entertainment': '🎬',
+    'Restaurants': '🍕',
+    'Groceries': '🛒',
+    'Coffee': '☕',
+    
+    // Shopping
     'Shopping': '🛍️',
+    'Clothing': '👕',
+    'Electronics': '📱',
+    'Gifts': '🎁',
+    
+    // Transportation
+    'Transportation': '🚗',
+    'Gas': '⛽',
+    'Public Transport': '🚌',
+    'Taxi': '🚕',
+    'Parking': '🅿️',
+    'Car Maintenance': '🔧',
+    
+    // Entertainment
+    'Entertainment': '🎬',
+    'Movies': '🎭',
+    'Games': '🎮',
+    'Sports': '⚽',
+    'Music': '🎵',
+    'Theater': '🎪',
+    
+    // Bills & Utilities
+    'Bills & Utilities': '💡',
+    'Utilities': '⚡',
+    'Electricity': '⚡',
+    'Water': '💧',
+    'Internet': '🌐',
+    'Phone': '📞',
+    'Rent': '🏠',
+    'Mortgage': '🏡',
+    
+    // Healthcare
     'Healthcare': '🏥',
+    'Medical': '💊',
+    'Dental': '🦷',
+    'Pharmacy': '💊',
+    'Insurance': '🛡️',
+    
+    // Education
     'Education': '📚',
+    'Tuition': '🎓',
+    'Books': '📖',
+    'Courses': '📝',
+    
+    // Travel
+    'Travel': '✈️',
+    'Flights': '🛫',
+    'Hotels': '🏨',
+    'Vacation': '🏖️',
+    
+    // Business
+    'Business': '🏢',
+    'Office': '💼',
+    'Equipment': '🖥️',
+    'Marketing': '📢',
+    
+    // Income
+    'Salary': '💰',
     'Income': '💰',
+    'Investment': '📈',
+    'Freelance': '💻',
+    'Bonus': '🎉',
+    
+    // Other Expenses
+    'Other Expenses': '💸',
+    'Other': '📝',
+    'Fees': '💳',
+    'Taxes': '📋',
+    
+    // Transfers
     'Transfer': '🔄',
-    'Other': '📝'
+    'Deposit': '📥',
+    'Withdrawal': '📤',
+    
+    // Gifts
+    'Gift': '🎁',
+    'Charity': '❤️',
+    
+    // Other Income
+    'Other Income': '➕',
+    'Refund': '↩️',
+    'Rebate': '💵'
   };
   
-  return emojiMap[category] || '📝';
+  // Try exact match first
+  if (emojiMap[category]) {
+    return emojiMap[category];
+  }
+  
+  // Try partial matches for categories that might have variations
+  const lowerCategory = category.toLowerCase();
+  
+  if (lowerCategory.includes('food') || lowerCategory.includes('dining') || lowerCategory.includes('restaurant')) {
+    return '🍽️';
+  }
+  if (lowerCategory.includes('shopping') || lowerCategory.includes('store')) {
+    return '🛍️';
+  }
+  if (lowerCategory.includes('transport') || lowerCategory.includes('car') || lowerCategory.includes('gas')) {
+    return '🚗';
+  }
+  if (lowerCategory.includes('entertainment') || lowerCategory.includes('movie') || lowerCategory.includes('game')) {
+    return '🎬';
+  }
+  if (lowerCategory.includes('bill') || lowerCategory.includes('utility') || lowerCategory.includes('electric')) {
+    return '💡';
+  }
+  if (lowerCategory.includes('health') || lowerCategory.includes('medical') || lowerCategory.includes('doctor')) {
+    return '🏥';
+  }
+  if (lowerCategory.includes('education') || lowerCategory.includes('school') || lowerCategory.includes('course')) {
+    return '📚';
+  }
+  if (lowerCategory.includes('travel') || lowerCategory.includes('flight') || lowerCategory.includes('hotel')) {
+    return '✈️';
+  }
+  if (lowerCategory.includes('income') || lowerCategory.includes('salary') || lowerCategory.includes('payment')) {
+    return '💰';
+  }
+  if (lowerCategory.includes('business') || lowerCategory.includes('work') || lowerCategory.includes('office')) {
+    return '🏢';
+  }
+  if (lowerCategory.includes('gift') || lowerCategory.includes('charity')) {
+    return '🎁';
+  }
+  
+  // Default fallback
+  return '💳';
 }
 
 /**
