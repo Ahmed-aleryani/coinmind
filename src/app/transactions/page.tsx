@@ -65,6 +65,8 @@ import { useCurrency } from "@/components/providers/currency-provider";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useRouter } from "next/navigation";
 import logger from "@/lib/utils/logger";
+import { ExportSettings } from "@/components/ui/export-settings";
+import { ExportOptions } from "@/lib/services/export.service";
 
 interface Transaction {
   id: string;
@@ -123,6 +125,7 @@ export default function Transactions() {
     useState<Transaction | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const [isExporting, setIsExporting] = useState(false);
   const { defaultCurrency, supportedCurrencies, isCurrencyLoading } = useCurrency();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -418,6 +421,47 @@ export default function Transactions() {
     }
   };
 
+  const handleExport = async (exportOptions: ExportOptions) => {
+    setIsExporting(true);
+    try {
+      const response = await fetch('/api/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ options: exportOptions }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+
+      // Get the filename from the response headers
+      const contentDisposition = response.headers.get('content-disposition');
+      const filename = contentDisposition
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
+        : `export.${exportOptions.format}`;
+
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      logger.info({ exportOptions, filename }, 'Export completed successfully');
+    } catch (error) {
+      logger.error({ error: error instanceof Error ? error.message : error, exportOptions }, 'Export failed');
+      console.error('Export failed:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const toggleDateExpansion = (date: string) => {
     const newExpanded = new Set(expandedDates);
     if (newExpanded.has(date)) {
@@ -472,10 +516,12 @@ export default function Transactions() {
             <Upload className="w-4 h-4 mr-2" />
             Import CSV
           </Button>
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Export
-          </Button>
+          <ExportSettings
+            onExport={handleExport}
+            supportedCurrencies={supportedCurrencies}
+            defaultCurrency={defaultCurrency}
+            isLoading={isExporting}
+          />
           <Button onClick={() => setIsAddDialogOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Add Transaction
