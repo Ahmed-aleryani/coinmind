@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
 
     // If a target currency is specified, convert all transactions to that currency
     if (targetCurrency) {
+      logger.info({ requestId, targetCurrency, transactionCount: transactions.length }, 'Starting currency conversion for transactions');
       const { getGlobalRates, convertWithGlobalRates } = await import('@/lib/utils/currency');
       // Fetch all rates with a single API call (base USD)
       let ratesObj;
@@ -67,6 +68,8 @@ export async function GET(request: NextRequest) {
         });
       }
       const { rates, base } = ratesObj;
+      logger.info({ requestId, targetCurrency, ratesCount: Object.keys(rates).length }, 'Currency conversion rates loaded');
+      
       transactions = transactions.map((t: any) => {
         // Use original currency if available, otherwise use the main currency
         const origAmount = t.originalAmount || Number(t.amount);
@@ -74,8 +77,21 @@ export async function GET(request: NextRequest) {
         let converted = origAmount;
         try {
           converted = convertWithGlobalRates(origAmount, origCurrency, targetCurrency, rates, base);
+          logger.debug({ 
+            requestId, 
+            originalAmount: origAmount, 
+            originalCurrency: origCurrency, 
+            targetCurrency, 
+            convertedAmount: converted 
+          }, 'Transaction converted successfully');
         } catch (e) {
-          logger.warn({ requestId, error: e instanceof Error ? e.message : e, t }, 'Global cross-rate conversion failed, using original amount');
+          logger.warn({ 
+            requestId, 
+            error: e instanceof Error ? e.message : e, 
+            originalAmount: origAmount,
+            originalCurrency: origCurrency,
+            targetCurrency
+          }, 'Global cross-rate conversion failed, using original amount');
         }
         return {
           ...t,
@@ -85,6 +101,18 @@ export async function GET(request: NextRequest) {
           convertedCurrency: targetCurrency
         };
       });
+      
+      logger.info({ 
+        requestId, 
+        targetCurrency, 
+        convertedCount: transactions.length,
+        sampleConversion: transactions[0] ? {
+          originalAmount: transactions[0].originalAmount,
+          originalCurrency: transactions[0].originalCurrency,
+          convertedAmount: transactions[0].convertedAmount,
+          convertedCurrency: transactions[0].convertedCurrency
+        } : null
+      }, 'Currency conversion completed');
     }
     
     // Get total count for pagination

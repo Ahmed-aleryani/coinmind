@@ -55,10 +55,16 @@ import {
   Trash2,
   Download,
   Upload,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CurrencyInfo } from "@/components/ui/currency-info";
+import { useCurrency } from "@/components/providers/currency-provider";
+import { useAuth } from "@/components/providers/auth-provider";
+import { useRouter } from "next/navigation";
+import logger from "@/lib/utils/logger";
 
 interface Transaction {
   id: string;
@@ -76,6 +82,12 @@ interface Transaction {
   convertedCurrency?: string;
   conversionRate?: number;
   conversionFee?: number;
+}
+
+interface GroupedTransactions {
+  date: string;
+  totalAmount: number;
+  transactions: Transaction[];
 }
 
 const CATEGORIES = [
@@ -100,6 +112,7 @@ export default function Transactions() {
   const [filteredTransactions, setFilteredTransactions] = useState<
     Transaction[]
   >([]);
+  const [groupedTransactions, setGroupedTransactions] = useState<GroupedTransactions[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -109,9 +122,34 @@ export default function Transactions() {
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [defaultCurrency, setDefaultCurrency] = useState("USD");
-  const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
-  const [isCurrencyLoading, setIsCurrencyLoading] = useState(false);
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const { defaultCurrency, supportedCurrencies, isCurrencyLoading } = useCurrency();
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  
+  // Client-side authentication check
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/');
+    }
+  }, [user, authLoading, router]);
+
+  // Show loading while checking authentication
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect if not authenticated (no user at all)
+  if (!user) {
+    return null; // Component will unmount and redirect
+  }
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(0);
@@ -121,7 +159,6 @@ export default function Transactions() {
   
   // Infinite scroll refs
   const observerRef = useRef<IntersectionObserver | null>(null);
-// Removed unused loadingTriggerRef variable
   
   const [formData, setFormData] = useState({
     amount: "",
@@ -133,39 +170,6 @@ export default function Transactions() {
     date: new Date().toISOString().split("T")[0],
   });
 
-  // Fetch supported currencies and user default currency
-  useEffect(() => {
-    const fetchCurrencies = async () => {
-      try {
-        setIsCurrencyLoading(true);
-        const res = await fetch("/api/user-currency");
-        const data = await res.json();
-        setDefaultCurrency(data.defaultCurrency || "USD");
-        const curRes = await fetch("/api/currencies");
-        const curData = await curRes.json();
-        setSupportedCurrencies(curData.currencies || ["USD"]);
-      } catch (e) {
-        setSupportedCurrencies(["USD"]);
-      } finally {
-        setIsCurrencyLoading(false);
-      }
-    };
-    fetchCurrencies();
-  }, []);
-
-  const handleCurrencyChange = async (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const newCurrency = e.target.value;
-    setDefaultCurrency(newCurrency);
-    await fetch("/api/user-currency", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ defaultCurrency: newCurrency }),
-    });
-    window.location.reload();
-  };
-
   const fetchTransactions = async (page = 0, append = false) => {
     try {
       if (!append) {
@@ -174,9 +178,10 @@ export default function Transactions() {
         setIsLoadingMore(true);
       }
 
+      logger.info({ defaultCurrency, page, append }, 'Fetching transactions for currency');
       const offset = page * pageSize;
       const response = await fetch(
-        `/api/transactions?currency=${defaultCurrency}&limit=${pageSize}&offset=${offset}`
+        `/api/transactions?currency=${defaultCurrency}&limit=${pageSize}&offset=${offset}&t=${Date.now()}`
       );
       const data = await response.json();
 
@@ -185,6 +190,13 @@ export default function Transactions() {
           ...t,
           date: new Date(t.date),
         }));
+        
+        logger.info({ 
+          defaultCurrency, 
+          success: data.success, 
+          transactionCount: data.data?.length || 0,
+          sampleTransaction: parsedTransactions[0]
+        }, 'Transactions API response received');
 
         if (append) {
           // Append to existing transactions
@@ -275,6 +287,36 @@ export default function Transactions() {
 
     setFilteredTransactions(filtered);
   }, [transactions, searchQuery, categoryFilter, typeFilter]);
+
+  // Group transactions by date
+  useEffect(() => {
+    const grouped = filteredTransactions.reduce((groups: GroupedTransactions[], transaction) => {
+      const dateKey = transaction.date.toISOString().split('T')[0];
+      const existingGroup = groups.find(group => group.date === dateKey);
+      
+      if (existingGroup) {
+        existingGroup.transactions.push(transaction);
+        existingGroup.totalAmount += transaction.type === 'income' 
+          ? (transaction.convertedAmount || transaction.amount)
+          : -(transaction.convertedAmount || transaction.amount);
+      } else {
+        groups.push({
+          date: dateKey,
+          totalAmount: transaction.type === 'income' 
+            ? (transaction.convertedAmount || transaction.amount)
+            : -(transaction.convertedAmount || transaction.amount),
+          transactions: [transaction]
+        });
+      }
+      
+      return groups;
+    }, []);
+
+    // Sort by date (newest first)
+    grouped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    setGroupedTransactions(grouped);
+  }, [filteredTransactions]);
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -376,6 +418,16 @@ export default function Transactions() {
     }
   };
 
+  const toggleDateExpansion = (date: string) => {
+    const newExpanded = new Set(expandedDates);
+    if (newExpanded.has(date)) {
+      newExpanded.delete(date);
+    } else {
+      newExpanded.add(date);
+    }
+    setExpandedDates(newExpanded);
+  };
+
   const totalIncome = filteredTransactions
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + (t.convertedAmount || t.amount), 0);
@@ -383,6 +435,13 @@ export default function Transactions() {
   const totalExpenses = filteredTransactions
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + Math.abs(t.convertedAmount || t.amount), 0);
+
+  logger.info({
+    totalIncome,
+    totalExpenses,
+    currency: defaultCurrency,
+    transactionCount: filteredTransactions.length
+  }, 'Transactions calculations completed');
 
   if (isLoading) {
     return (
@@ -425,7 +484,7 @@ export default function Transactions() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">
@@ -459,6 +518,19 @@ export default function Transactions() {
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
               {formatCurrency(totalExpenses, { currency: defaultCurrency })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Cash Flow</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${
+              (totalIncome - totalExpenses) >= 0 ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {formatCurrency(totalIncome - totalExpenses, { currency: defaultCurrency })}
             </div>
           </CardContent>
         </Card>
@@ -511,156 +583,152 @@ export default function Transactions() {
         </CardContent>
       </Card>
 
-      {/* Transactions Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="text-right">Amount ({defaultCurrency})</TableHead>
-                <TableHead className="text-right">Original</TableHead>
-                <TableHead className="w-[70px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTransactions.map((transaction, index) => {
-                // Add ref to the last few items to trigger loading
-                const isLastItem = index === filteredTransactions.length - 1;
-                const isNearEnd = index >= filteredTransactions.length - 3;
+      {/* Timeline View */}
+      <div className="space-y-4">
+        {groupedTransactions.map((group, groupIndex) => {
+          const isExpanded = expandedDates.has(group.date);
+          const isLastGroup = groupIndex === groupedTransactions.length - 1;
+          
+          return (
+            <Card key={group.date} className="overflow-hidden">
+              {/* Date Header with Total */}
+              <div 
+                className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => toggleDateExpansion(group.date)}
+              >
+                <div className="flex items-center gap-4">
+                  <div>
+                    <h3 className="font-semibold text-lg">
+                      {formatDate(new Date(group.date), "long")}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {group.transactions.length} transaction{group.transactions.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                </div>
                 
-                return (
-                  <TableRow 
-                    key={transaction.id}
-                    ref={isLastItem ? lastTransactionElementRef : null}
-                  >
-                    <TableCell>{formatDate(transaction.date, "long")}</TableCell>
-                    <TableCell className="font-medium">
-                      {transaction.description}
-                    </TableCell>
-                    <TableCell>{transaction.vendor}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span>{getCategoryEmoji(transaction.category)}</span>
-                        <span className="text-sm">{transaction.category}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          transaction.type === "income" ? "default" : "secondary"
-                        }
-                      >
-                        {transaction.type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex flex-col items-end">
-                        <span
-                          className={`font-bold ${
-                            transaction.type === "income"
-                              ? "text-green-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {transaction.type === "income" ? "+" : "-"}
-                          {formatCurrency(
-                            Math.abs(transaction.amount),
-                            { currency: transaction.currency }
-                          )}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {transaction.originalAmount && transaction.originalCurrency ? (
-                        <div className="flex flex-col items-end">
-                          <span className="text-sm text-muted-foreground">
-                            {formatCurrency(
-                              Math.abs(transaction.originalAmount),
-                              { currency: transaction.originalCurrency }
-                            )}
-                          </span>
-                          {transaction.conversionRate && transaction.conversionRate !== 1 && (
-                            <span className="text-xs text-muted-foreground">
-                              Rate: {transaction.conversionRate.toFixed(4)}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleEdit(transaction)}
-                          >
-                            <Edit className="w-4 h-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(transaction.id)}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-        
-        {/* Infinite Scroll Loading Indicator */}
-        {filteredTransactions.length > 0 && (
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing {filteredTransactions.length} transactions
-                {totalCount > 0 && ` of ${totalCount} total`}
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <div className={`text-lg font-bold ${
+                      group.totalAmount >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {group.totalAmount >= 0 ? '+' : ''}{formatCurrency(group.totalAmount, { currency: defaultCurrency })}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Daily Total
+                    </div>
+                  </div>
+                  
+                  <Button variant="ghost" size="sm">
+                    {isExpanded ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
-              
-              {isLoadingMore && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground ml-auto">
-                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                  Loading more...
+
+              {/* Transactions for this date */}
+              {isExpanded && (
+                <div className="border-t">
+                  <div className="p-4 space-y-3">
+                    {group.transactions.map((transaction) => (
+                      <div
+                        key={transaction.id}
+                        className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className="w-10 h-10 bg-background rounded-full flex items-center justify-center border">
+                            <span className="text-lg">{getCategoryEmoji(transaction.category)}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm">
+                              {transaction.category}
+                            </div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {transaction.description}
+                            </div>
+                            {transaction.originalAmount && transaction.originalCurrency && (
+                              <div className="text-xs text-muted-foreground">
+                                {formatCurrency(
+                                  Math.abs(transaction.originalAmount),
+                                  { currency: transaction.originalCurrency }
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <div className={`font-bold text-sm ${
+                              transaction.type === "income" ? "text-green-600" : "text-red-600"
+                            }`}>
+                              {transaction.type === "income" ? "+" : "-"}
+                              {formatCurrency(
+                                Math.abs(transaction.convertedAmount || transaction.amount),
+                                { currency: defaultCurrency }
+                              )}
+                            </div>
+                          </div>
+                          
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleEdit(transaction)}>
+                                <Edit className="w-4 h-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleDelete(transaction.id)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
-              
-              {hasMore && !isLoadingMore && filteredTransactions.length >= pageSize && (
-                <Button 
-                  onClick={loadMoreTransactions}
-                  variant="ghost" 
-                  size="sm"
-                  className="ml-auto text-xs"
-                >
-                  Load More
-                </Button>
+
+              {/* Infinite scroll trigger */}
+              {isLastGroup && hasMore && (
+                <div ref={lastTransactionElementRef} className="h-4" />
               )}
-              
-              {!hasMore && filteredTransactions.length > pageSize && (
-                <div className="text-sm text-muted-foreground ml-auto">
-                  No more transactions to load
-                </div>
-              )}
-            </div>
-          </CardContent>
+            </Card>
+          );
+        })}
+
+        {/* Loading indicator */}
+        {isLoadingMore && (
+          <div className="flex items-center justify-center py-4">
+            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+            <span className="ml-2 text-sm text-muted-foreground">Loading more...</span>
+          </div>
         )}
-      </Card>
+
+        {/* Empty state */}
+        {groupedTransactions.length === 0 && !isLoading && (
+          <Card>
+            <CardContent className="text-center py-8">
+              <div className="text-muted-foreground mb-2">No transactions found</div>
+              <Button onClick={() => setIsAddDialogOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Transaction
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* Add/Edit Transaction Dialog */}
       <Dialog
@@ -694,75 +762,105 @@ export default function Transactions() {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="amount">Amount</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formData.amount}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, amount: e.target.value }))
-                  }
-                  required
-                />
-              </div>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Basic Information</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="amount">Amount *</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={formData.amount}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, amount: e.target.value }))
+                    }
+                    required
+                    className="text-lg"
+                  />
+                </div>
 
-              <div>
-                <Label htmlFor="currency">Currency</Label>
-                <Select
-                  value={formData.currency}
-                  onValueChange={(value) =>
-                    setFormData((prev) => ({ ...prev, currency: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="USD">USD</SelectItem>
-                    <SelectItem value="EUR">EUR</SelectItem>
-                    <SelectItem value="GBP">GBP</SelectItem>
-                    <SelectItem value="JPY">JPY</SelectItem>
-                    <SelectItem value="CAD">CAD</SelectItem>
-                    <SelectItem value="AUD">AUD</SelectItem>
-                    <SelectItem value="CHF">CHF</SelectItem>
-                    <SelectItem value="CNY">CNY</SelectItem>
-                    <SelectItem value="SAR">SAR</SelectItem>
-                    <SelectItem value="AED">AED</SelectItem>
-                    <SelectItem value="YER">YER</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="type">Type</Label>
-                <Select
-                  value={formData.type}
-                  onValueChange={(value: "income" | "expense") =>
-                    setFormData((prev) => ({ ...prev, type: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="expense">Expense</SelectItem>
-                    <SelectItem value="income">Income</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="space-y-2">
+                  <Label htmlFor="type">Type *</Label>
+                  <Select
+                    value={formData.type}
+                    onValueChange={(value: "income" | "expense") =>
+                      setFormData((prev) => ({ ...prev, type: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="expense">💸 Expense</SelectItem>
+                      <SelectItem value="income">💰 Income</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="vendor">Vendor</Label>
+            {/* Transaction Details */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Transaction Details</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category *</Label>
+                  <Select
+                    value={formData.category}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, category: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {getCategoryEmoji(category)} {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="currency">Currency</Label>
+                  <Select
+                    value={formData.currency}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, currency: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {supportedCurrencies?.map((currency) => (
+                        <SelectItem key={currency} value={currency}>
+                          {currency}
+                        </SelectItem>
+                      )) || [
+                        "USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "SAR", "AED", "YER"
+                      ].map(code => (
+                        <SelectItem key={code} value={code}>
+                          {code}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="vendor">Vendor *</Label>
                 <Input
                   id="vendor"
-                  placeholder="e.g., Starbucks"
+                  placeholder="e.g., Starbucks, Amazon, etc."
                   value={formData.vendor}
                   onChange={(e) =>
                     setFormData((prev) => ({ ...prev, vendor: e.target.value }))
@@ -771,58 +869,39 @@ export default function Transactions() {
                 />
               </div>
 
-              <div>
-                <Label htmlFor="category">Category</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) =>
-                    setFormData((prev) => ({ ...prev, category: value }))
+              <div className="space-y-2">
+                <Label htmlFor="description">Description *</Label>
+                <Textarea
+                  id="description"
+                  placeholder="Brief description of the transaction..."
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {getCategoryEmoji(category)} {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  required
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="date">Date *</Label>
+                <Input
+                  id="date"
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, date: e.target.value }))
+                  }
+                  required
+                />
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                placeholder="Transaction description..."
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    description: e.target.value,
-                  }))
-                }
-                required
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="date">Date</Label>
-              <Input
-                id="date"
-                type="date"
-                value={formData.date}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, date: e.target.value }))
-                }
-                required
-              />
-            </div>
-
-            <DialogFooter>
+            {/* Action Buttons */}
+            <DialogFooter className="flex gap-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
@@ -830,11 +909,16 @@ export default function Transactions() {
                   setIsAddDialogOpen(false);
                   setIsEditDialogOpen(false);
                 }}
+                className="flex-1"
               >
                 Cancel
               </Button>
-              <Button type="submit">
-                {editingTransaction ? "Update" : "Add"} Transaction
+              <Button 
+                type="submit" 
+                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                size="lg"
+              >
+                {editingTransaction ? "Update" : "Save"} Transaction
               </Button>
             </DialogFooter>
           </form>
