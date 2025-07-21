@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMessageTime } from "@/lib/utils/formatters";
+import { detectLanguage } from "@/lib/utils/language-detection";
 
 import { parseSpreadsheetFile } from "@/lib/utils/parsers";
 
@@ -153,17 +154,16 @@ function MessageList({
 interface ChatInputProps {
   input: string;
   onInputChange: (value: string) => void;
-  onSubmit: () => void;
+  onSubmit: (e: React.FormEvent) => void;
   onKeyPress: (e: React.KeyboardEvent) => void;
   isLoading: boolean;
   isListening: boolean;
   speechSupported: boolean;
-  voiceLang: string;
-  setVoiceLang: (lang: string) => void;
   onVoiceInput: () => void;
   onCSVImport: () => void;
   onReceiptUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   receiptFileInputRef: React.RefObject<HTMLInputElement | null>;
+  recordingTime: number;
 }
 
 function ChatInput({
@@ -174,38 +174,22 @@ function ChatInput({
   isLoading,
   isListening,
   speechSupported,
-  voiceLang,
-  setVoiceLang,
   onVoiceInput,
   onCSVImport,
   onReceiptUpload,
   receiptFileInputRef,
+  recordingTime,
 }: ChatInputProps) {
   return (
     <div className="border-t p-4">
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          onSubmit();
+          onSubmit(e);
         }}
         className="max-w-4xl mx-auto"
       >
-        <div className="flex items-center gap-2 mb-2">
-          <label htmlFor="voice-lang-select" className="text-sm font-medium">
-            Voice Language:
-          </label>
-          <select
-            id="voice-lang-select"
-            value={voiceLang}
-            onChange={(e) => setVoiceLang(e.target.value)}
-            className="border rounded px-2 py-1 text-sm"
-            disabled={isLoading}
-          >
-            <option value="en-US">English</option>
-            <option value="ar-SA">العربية</option>
-          </select>
-        </div>
-        <div className="flex gap-2 items-end">
+        <div className="flex gap-3 items-start">
           <div className="flex-1 relative">
             <TextareaAutosize
               value={input}
@@ -213,11 +197,11 @@ function ChatInput({
               onKeyPress={onKeyPress}
               placeholder={
                 isListening
-                  ? "🎤 Listening... speak now"
-                  : getPlaceholderText(input)
+                  ? `🎤 Listening... ${recordingTime > 0 ? `(${recordingTime}s)` : ''}`
+                  : getPlaceholderText()
               }
               className={cn(
-                "w-full resize-none border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 rounded-md",
+                "w-full resize-none border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 rounded-md min-h-[36px]",
                 isListening && "border-red-300 bg-red-50 dark:bg-red-950/20"
               )}
               minRows={1}
@@ -225,7 +209,16 @@ function ChatInput({
               disabled={isLoading}
             />
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-2 items-start">
+            <Button
+              type="submit"
+              size="icon"
+              disabled={isLoading || !input.trim()}
+              title="Send message"
+              className="h-[36px] w-[36px] rounded-md flex-shrink-0"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
             <Button
               type="button"
               variant={isListening ? "default" : "outline"}
@@ -237,11 +230,12 @@ function ChatInput({
                   ? "Voice input not supported in your browser"
                   : isListening
                   ? "Click to stop recording"
-                  : "Click to start voice input"
+                  : "Click to start voice input (20s max)"
               }
-              className={
+              className={cn(
+                "h-[36px] w-[36px] rounded-md flex-shrink-0",
                 isListening ? "animate-pulse bg-red-500 hover:bg-red-600" : ""
-              }
+              )}
             >
               {isListening ? (
                 <MicOff className="h-4 w-4" />
@@ -254,37 +248,32 @@ function ChatInput({
               variant="outline"
               size="icon"
               disabled={isLoading}
-              title="Upload receipt"
               onClick={() => receiptFileInputRef.current?.click()}
+              title="Upload receipt"
+              className="h-[36px] w-[36px] rounded-md flex-shrink-0"
             >
               <Camera className="h-4 w-4" />
             </Button>
-            <input
-              ref={receiptFileInputRef}
-              type="file"
-              accept="image/*,.pdf"
-              className="hidden"
-              onChange={onReceiptUpload}
-            />
             <Button
               type="button"
               variant="outline"
               size="icon"
               disabled={isLoading}
               onClick={onCSVImport}
-              title="Import CSV or Excel file"
+              title="Import CSV/Excel file"
+              className="h-[36px] w-[36px] rounded-md flex-shrink-0"
             >
               <FileSpreadsheet className="h-4 w-4" />
             </Button>
-            <Button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              size="icon"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
           </div>
         </div>
+        <input
+          type="file"
+          ref={receiptFileInputRef}
+          onChange={onReceiptUpload}
+          accept="image/*,.pdf"
+          className="hidden"
+        />
       </form>
     </div>
   );
@@ -341,7 +330,7 @@ interface WindowWithSpeechRecognition extends Window {
 }
 
 // Get placeholder text - AI will handle language detection naturally
-function getPlaceholderText(input: string): string {
+function getPlaceholderText(): string {
   // Default to English placeholder, AI will respond in user's language
   return "Type your message... (e.g., 'I spent $50 on groceries')";
 }
@@ -369,7 +358,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
-  const [voiceLang, setVoiceLang] = useState("en-US"); // Language selector for voice input
+  const [recordingTime, setRecordingTime] = useState(0);
   const [lastUploadedFile, setLastUploadedFile] = useState<{ name: string; size: number; lastModified: number } | null>(null);
   const [lastUploadedReceipt, setLastUploadedReceipt] = useState<{ name: string; size: number; lastModified: number } | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -377,7 +366,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const receiptFileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  // Remove receiptSaveMode state and related logic
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
@@ -407,15 +396,29 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = true;
-      recognition.lang = voiceLang; // Use selected language
+      recognition.lang = "auto"; // Let browser auto-detect language
 
       recognition.onstart = () => {
         setIsListening(true);
+        setRecordingTime(0);
+        
+        // Start 20-second timer
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingTime((prev) => {
+            if (prev >= 20) {
+              // Auto-stop recording after 20 seconds
+              recognition.stop();
+              return 0;
+            }
+            return prev + 1;
+          });
+        }, 1000);
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
         let transcript = "";
         let isFinal = false;
+        let detectedLanguage = "en"; // Default
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
@@ -425,15 +428,41 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
           }
         }
 
-        if (isFinal) {
-          setInput((prev) => prev + (prev ? " " : "") + transcript);
+        if (isFinal && transcript.trim()) {
+          // Auto-detect language from transcript
+          const languageInfo = detectLanguage(transcript);
+          detectedLanguage = languageInfo.code;
+          
+          logger.info({ transcript, detectedLanguage }, "Voice input completed with language detection");
+          
+          // Set the transcript and auto-send
+          setInput(transcript.trim());
           setIsListening(false);
+          
+          // Clear timer
+          if (recordingTimerRef.current) {
+            clearInterval(recordingTimerRef.current);
+            recordingTimerRef.current = null;
+          }
+          setRecordingTime(0);
+          
+          // Auto-send the message after a short delay
+          setTimeout(() => {
+            sendMessage(transcript.trim());
+          }, 500);
         }
       };
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         console.error("Speech recognition error:", event.error);
         setIsListening(false);
+        setRecordingTime(0);
+        
+        // Clear timer
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
 
         // Show error message to user
         const errorMessage: Message = {
@@ -448,6 +477,13 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
       recognition.onend = () => {
         setIsListening(false);
+        setRecordingTime(0);
+        
+        // Clear timer
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
       };
 
       recognitionRef.current = recognition;
@@ -459,8 +495,11 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
     };
-  }, [voiceLang]); // Add voiceLang to dependency array
+  }, []); // Remove voiceLang dependency since we're using auto-detection
 
   const sendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
@@ -596,9 +635,10 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       try {
         // Request microphone permission first
         await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Set recognition language before starting
+        
+        // Start recording with auto language detection
         if (recognitionRef.current) {
-          recognitionRef.current.lang = voiceLang;
+          recognitionRef.current.lang = "auto"; // Let browser auto-detect
           recognitionRef.current.start();
         }
       } catch (error) {
@@ -1058,13 +1098,6 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileUpload}
-        accept=".csv,.xlsx,.xls"
-        style={{ display: "none" }}
-      />
       <MessageList
         messages={messages}
         isLoading={isLoading}
@@ -1074,17 +1107,23 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       <ChatInput
         input={input}
         onInputChange={setInput}
-        onSubmit={() => sendMessage(input)}
+        onSubmit={handleSubmit}
         onKeyPress={handleKeyPress}
         isLoading={isLoading}
         isListening={isListening}
         speechSupported={speechSupported}
-        voiceLang={voiceLang}
-        setVoiceLang={setVoiceLang}
         onVoiceInput={handleVoiceInput}
         onCSVImport={handleCSVImport}
         onReceiptUpload={handleReceiptUpload}
         receiptFileInputRef={receiptFileInputRef}
+        recordingTime={recordingTime}
+      />
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept=".csv,.xlsx,.xls"
+        className="hidden"
       />
     </div>
   );
