@@ -17,6 +17,18 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const search = searchParams.get('search');
     const targetCurrency = searchParams.get('currency');
+    const startDateParam = searchParams.get('startDate');
+    const endDateParam = searchParams.get('endDate');
+    
+    let startDate: Date | undefined = undefined;
+    let endDate: Date | undefined = undefined;
+    if (startDateParam && endDateParam) {
+      startDate = new Date(startDateParam);
+      endDate = new Date(endDateParam);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return NextResponse.json({ success: false, error: 'Invalid startDate or endDate' }, { status: 400 });
+      }
+    }
     
     logger.info({ requestId, limit, offset, search, targetCurrency, userId }, 'Fetching transactions with parameters');
     
@@ -25,6 +37,9 @@ export async function GET(request: NextRequest) {
     if (search) {
       transactions = await services.transactions.searchTransactions(userId, search, limit);
       logger.info({ requestId, search, resultCount: transactions.length }, 'Search completed');
+    } else if (startDate && endDate) {
+      transactions = await services.transactions.findByDateRange(userId, startDate, endDate);
+      logger.info({ requestId, startDate, endDate, resultCount: transactions.length }, 'Fetched transactions by date range');
     } else {
       transactions = await services.transactions.getTransactions(userId, limit, offset);
       logger.info({ requestId, resultCount: transactions.length }, 'Fetched all transactions');
