@@ -136,6 +136,19 @@ export class TransactionService {
     }
   }
 
+  async findByDateRange(userId: string, startDate: Date, endDate: Date): Promise<EnrichedTransaction[]> {
+    try {
+      const transactions = await this.transactionRepo.findByDateRange(userId, startDate, endDate);
+      const enrichedTransactions = await Promise.all(
+        transactions.map(transaction => this.enrichTransaction(transaction))
+      );
+      return enrichedTransactions;
+    } catch (error) {
+      logger.error({ error, userId, startDate, endDate }, 'Failed to get transactions by date range');
+      throw new Error('Failed to get transactions by date range');
+    }
+  }
+
   async getTransactions(userId: string, limit: number = 50, offset: number = 0): Promise<EnrichedTransaction[]> {
     try {
       const transactions = await this.transactionRepo.findByUserId(userId, limit, offset);
