@@ -165,7 +165,7 @@ export class ExportService {
     const endMonth = dateRange.endDate.toLocaleDateString('en-US', { month: 'short' });
     const year = dateRange.endDate.getFullYear();
     
-    let filename = `expenses_${options.viewType}_${startMonth}-${endMonth}_${year}`;
+    const filename = `expenses_${options.viewType}_${startMonth}-${endMonth}_${year}`;
     
     return `${filename}.${options.format}`;
   }

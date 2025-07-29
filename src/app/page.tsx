@@ -80,7 +80,7 @@ export default function Home() {
         setLoginEmail("")
         setLoginPassword("")
       }
-    } catch (error) {
+    } catch {
       setLoginError("An unexpected error occurred")
     } finally {
       setLoginLoading(false)
@@ -125,7 +125,7 @@ export default function Home() {
         setSignupConfirmPassword("")
         setSignupFullName("")
       }
-    } catch (error) {
+    } catch {
       setSignupError("An unexpected error occurred")
     } finally {
       setSignupLoading(false)
@@ -148,7 +148,7 @@ export default function Home() {
         setForgotPasswordMessage("Check your email for the password reset link!")
         setForgotPasswordEmail("")
       }
-    } catch (error) {
+    } catch {
       setForgotPasswordMessage("An unexpected error occurred")
     } finally {
       setForgotPasswordLoading(false)
@@ -414,7 +414,7 @@ export default function Home() {
             </form>
 
             <div className="text-center text-sm">
-              Don't have an account?{" "}
+              Don&apos;t have an account?{" "}
               <Button
                 variant="link"
                 className="px-0"
@@ -626,7 +626,7 @@ export default function Home() {
             </div>
             <DialogTitle className="text-2xl font-bold">Reset your password</DialogTitle>
             <DialogDescription>
-              Enter your email address and we'll send you a link to reset your password
+              Enter your email address and we&apos;ll send you a link to reset your password
             </DialogDescription>
           </DialogHeader>
           

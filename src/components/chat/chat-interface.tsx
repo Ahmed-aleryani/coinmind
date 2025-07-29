@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect , useCallback} from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -360,9 +360,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const [speechSupported, setSpeechSupported] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [lastUploadedFile, setLastUploadedFile] = useState<{ name: string; size: number; lastModified: number } | null>(null);
-  const [lastUploadedReceipt, setLastUploadedReceipt] = useState<{ name: string; size: number; lastModified: number } | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const receiptFileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -501,7 +500,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     };
   }, []); // Remove voiceLang dependency since we're using auto-detection
 
-  const sendMessage = async (content: string) => {
+  const sendMessage = useCallback(async (content: string) => {
     if (!content.trim() || isLoading) return;
 
     // Handle CSV import confirmations
@@ -597,7 +596,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isLoading]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -684,12 +683,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     // Reset the input value to allow selecting the same file again
     event.target.value = "";
 
-    // Track receipt info for AI analysis
-    const currentReceipt = {
-      name: file.name,
-      size: file.size,
-      lastModified: file.lastModified
-    };
+
 
     // Validate file type
     if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
@@ -818,12 +812,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     // Reset the input value to allow selecting the same file again
     event.target.value = "";
 
-    // Track file info for AI analysis
-    const currentFile = {
-      name: file.name,
-      size: file.size,
-      lastModified: file.lastModified
-    };
+
 
     // Validate file type
     const fileName = file.name.toLowerCase();
@@ -916,8 +905,6 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
         // Track the uploaded file only if it's not a duplicate
         if (data.data.fileInfo) {
-          // Detect language from file name
-          const isArabic = /[\u0600-\u06FF]/.test(file.name);
           // Let AI handle language detection naturally
           setLastUploadedFile({
             name: file.name,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -66,7 +66,6 @@ import {
 import { CurrencyInfo } from "@/components/ui/currency-info";
 import { useCurrency } from "@/components/providers/currency-provider";
 import { useAuth } from "@/components/providers/auth-provider";
-import { cn } from "@/lib/utils";
 import logger from "@/lib/utils/logger";
 import Link from "next/link";
 import {
@@ -80,7 +79,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabaseClient } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
 
 interface Transaction {
   id: string;
@@ -111,12 +109,7 @@ interface CategoryStat {
   netAmount: number;
 }
 
-interface MonthlyData {
-  month: string;
-  income: number;
-  expenses: number;
-  net: number;
-}
+
 
 interface CashFlowData {
   date: string;
@@ -142,55 +135,15 @@ const CHART_COLORS = [
 
 export default function DashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filteredTransactions, setFilteredTransactions] = useState<
-    Transaction[]
-  >([]);
-  const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
+  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [cashFlowData, setCashFlowData] = useState<CashFlowData[]>([]);
   const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [timePeriod, setTimePeriod] = useState<TimePeriod>("month");
-  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(
-    undefined
-  );
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [chartType, setChartType] = useState<ChartType>("bar");
   const [categoryView, setCategoryView] = useState<CategoryView>("all");
-  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
-  const {
-    defaultCurrency,
-    supportedCurrencies,
-    isCurrencyLoading,
-    setDefaultCurrency,
-  } = useCurrency();
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
-
-  // Client-side authentication check
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/');
-    }
-  }, [user, authLoading, router]);
-
-  // Show loading while checking authentication
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Redirect if not authenticated (no user at all)
-  if (!user) {
-    return null; // Component will unmount and redirect
-  }
-
-  // Modal states
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isSignupOpen, setIsSignupOpen] = useState(false);
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
@@ -211,52 +164,16 @@ export default function DashboardPage() {
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
 
-  const handleCurrencyChange = async (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const newCurrency = e.target.value;
-    logger.info({ newCurrency }, "Currency changed in dashboard");
-    setIsLoading(true); // Show loading state while refetching data
-    await setDefaultCurrency(newCurrency);
-    logger.info(
-      { newCurrency },
-      "Currency update completed, useEffect should trigger"
-    );
-    // The useEffect will automatically refetch data when defaultCurrency changes
-  };
-
-  // Get date range based on selected time period
-  const getDateRange = () => {
-    const now = new Date();
-    const start = new Date();
-
-    switch (timePeriod) {
-      case "week":
-        start.setDate(now.getDate() - 7);
-        break;
-      case "month":
-        start.setMonth(now.getMonth() - 1);
-        break;
-      case "year":
-        start.setFullYear(now.getFullYear() - 1);
-        break;
-      case "custom":
-        if (customDateRange?.from && customDateRange?.to) {
-          return { start: customDateRange.from, end: customDateRange.to };
-        }
-        start.setMonth(now.getMonth() - 1);
-        break;
-    }
-
-    return { start, end: now };
-  };
+  const { user, loading: authLoading } = useAuth();
+  const { defaultCurrency } = useCurrency();
 
   // Filter transactions based on selected time period and categories
   useEffect(() => {
     const { start, end } = getDateRange();
 
-    let filtered = transactions.filter((t) => {
+    const filtered = transactions.filter((t) => {
       const transactionDate = new Date(t.date);
       const isInDateRange = transactionDate >= start && transactionDate <= end;
       const isInCategory =
@@ -267,31 +184,6 @@ export default function DashboardPage() {
 
     setFilteredTransactions(filtered);
   }, [transactions, timePeriod, customDateRange, selectedCategories]);
-
-  // Summary stats - use converted amounts for calculations
-  const totalIncome = filteredTransactions
-    .filter((t) => t.type === "income")
-    .reduce((sum, t) => sum + (t.convertedAmount || t.amount), 0);
-
-  const totalExpenses = filteredTransactions
-    .filter((t) => t.type === "expense")
-    .reduce((sum, t) => sum + Math.abs(t.convertedAmount || t.amount), 0);
-
-  const netAmount = totalIncome - totalExpenses;
-  const savingsRate = totalIncome > 0 ? (netAmount / totalIncome) * 100 : 0;
-  const totalWealth = totalIncome + Math.abs(totalExpenses); // Total money flow
-
-  logger.info(
-    {
-      totalIncome,
-      totalExpenses,
-      netAmount,
-      savingsRate,
-      currency: defaultCurrency,
-      transactionCount: filteredTransactions.length,
-    },
-    "Dashboard calculations completed"
-  );
 
   // Generate cash flow data for the selected period
   useEffect(() => {
@@ -377,8 +269,8 @@ export default function DashboardPage() {
       .filter((t) => t.type === "income")
       .reduce((sum, t) => sum + (t.convertedAmount || t.amount), 0);
 
-    const categoryArray = Array.from(categoryMap.entries())
-      .map(([category, data]) => ({
+    const categoryStatsArray = Array.from(categoryMap.entries()).map(
+      ([category, data]) => ({
         category,
         expenseAmount: data.expenseAmount,
         incomeAmount: data.incomeAmount,
@@ -394,154 +286,127 @@ export default function DashboardPage() {
             ? (data.incomeAmount / fetchedTotalIncome) * 100
             : 0,
         netAmount: data.incomeAmount - data.expenseAmount,
-      }))
-      .sort((a, b) => b.totalAmount - a.totalAmount);
+      })
+    );
 
-    setCategoryStats(categoryArray);
+    setCategoryStats(categoryStatsArray);
   }, [filteredTransactions]);
 
+  // Fetch data on mount and when currency changes
   useEffect(() => {
     const fetchData = async () => {
       try {
-        logger.info(
-          { defaultCurrency },
-          "Fetching dashboard data for currency"
-        );
-        // Fetch transactions converted to the selected default currency with cache busting
+        setIsLoading(true);
+        logger.info({ defaultCurrency }, "Fetching dashboard data");
+
         const response = await fetch(
           `/api/transactions?currency=${defaultCurrency}&t=${Date.now()}`
         );
         const data = await response.json();
-
-        logger.info(
-          {
-            defaultCurrency,
-            success: data.success,
-            transactionCount: data.data?.length || 0,
-          },
-          "Dashboard API response received"
-        );
 
         if (data.success) {
           const parsedTransactions = data.data.map((t: any) => ({
             ...t,
             date: new Date(t.date),
           }));
-          logger.debug(
+
+          setTransactions(parsedTransactions);
+          logger.info(
             {
               defaultCurrency,
-              transactionCount: parsedTransactions.length,
-              sampleTransaction: parsedTransactions[0],
-              incomeTransactions: parsedTransactions
-                .filter((t: Transaction) => t.type === "income")
-                .map((t: Transaction) => ({
-                  amount: t.convertedAmount || t.amount,
-                  originalAmount: t.originalAmount,
-                  originalCurrency: t.originalCurrency,
-                })),
+              success: data.success,
+              transactionCount: data.data?.length || 0,
             },
-            "Parsed transactions for dashboard"
+            "Dashboard data fetched successfully"
           );
-          setTransactions(parsedTransactions);
-
-          // Generate monthly data (last 6 months)
-          const monthlyMap = new Map<
-            string,
-            { income: number; expenses: number }
-          >();
-          const now = new Date();
-
-          for (let i = 5; i >= 0; i--) {
-            const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const monthKey = date.toLocaleDateString("en-US", {
-              month: "short",
-              year: "2-digit",
-            });
-            monthlyMap.set(monthKey, { income: 0, expenses: 0 });
-          }
-
-          parsedTransactions.forEach((t: Transaction) => {
-            const monthKey = t.date.toLocaleDateString("en-US", {
-              month: "short",
-              year: "2-digit",
-            });
-            const existing = monthlyMap.get(monthKey);
-            if (existing) {
-              const amount = t.convertedAmount || t.amount;
-              if (t.type === "income") {
-                existing.income += amount;
-              } else {
-                existing.expenses += Math.abs(amount);
-              }
-            }
-          });
-
-          const monthlyArray = Array.from(monthlyMap.entries()).map(
-            ([month, data]) => ({
-              month,
-              income: data.income,
-              expenses: data.expenses,
-              net: data.income - data.expenses,
-            })
+        } else {
+          logger.error(
+            { defaultCurrency, error: data.error },
+            "Failed to fetch dashboard data"
           );
-
-          setMonthlyData(monthlyArray);
-
-          // Generate category stats
-          const categoryMap = new Map<
-            string,
-            { amount: number; count: number }
-          >();
-          const expenseTransactions = parsedTransactions.filter(
-            (t: Transaction) => t.type === "expense"
-          );
-
-          expenseTransactions.forEach((t: Transaction) => {
-            const existing = categoryMap.get(t.category) || {
-              amount: 0,
-              count: 0,
-            };
-            const amount = t.convertedAmount || t.amount;
-            existing.amount += Math.abs(amount);
-            existing.count += 1;
-            categoryMap.set(t.category, existing);
-          });
-
-          // Calculate total expenses from the fetched data
-          const fetchedTotalExpenses = expenseTransactions.reduce(
-            (sum: number, t: Transaction) =>
-              sum + Math.abs(t.convertedAmount || t.amount),
-            0
-          );
-
-          const categoryArray = Array.from(categoryMap.entries())
-            .map(([category, data]) => ({
-              category,
-              expenseAmount: data.amount,
-              incomeAmount: 0,
-              expenseCount: data.count,
-              incomeCount: 0,
-              totalAmount: data.amount,
-              expensePercentage:
-                fetchedTotalExpenses > 0
-                  ? (data.amount / fetchedTotalExpenses) * 100
-                  : 0,
-              incomePercentage: 0,
-              netAmount: -data.amount,
-            }))
-            .sort((a, b) => b.totalAmount - a.totalAmount);
-
-          setCategoryStats(categoryArray);
         }
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
+      } catch {
+        logger.error(
+          { defaultCurrency },
+          "Error fetching dashboard data"
+        );
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchData();
+    if (defaultCurrency) {
+      fetchData();
+    }
   }, [defaultCurrency]);
+
+  // Get date range based on selected time period
+  const getDateRange = useCallback(() => {
+    const now = new Date();
+    const start = new Date();
+
+    switch (timePeriod) {
+      case "week":
+        start.setDate(now.getDate() - 7);
+        break;
+      case "month":
+        start.setMonth(now.getMonth() - 1);
+        break;
+      case "year":
+        start.setFullYear(now.getFullYear() - 1);
+        break;
+      case "custom":
+        if (customDateRange?.from && customDateRange?.to) {
+          return { start: customDateRange.from, end: customDateRange.to };
+        }
+        start.setMonth(now.getMonth() - 1);
+        break;
+    }
+
+    return { start, end: now };
+  }, [timePeriod, customDateRange]);
+
+  // Show loading while checking authentication
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect if not authenticated (no user at all)
+  if (!user) {
+    return null; // Component will unmount and redirect
+  }
+
+  // Summary stats - use converted amounts for calculations
+  const totalIncome = filteredTransactions
+    .filter((t) => t.type === "income")
+    .reduce((sum, t) => sum + (t.convertedAmount || t.amount), 0);
+
+  const totalExpenses = filteredTransactions
+    .filter((t) => t.type === "expense")
+    .reduce((sum, t) => sum + Math.abs(t.convertedAmount || t.amount), 0);
+
+  const netAmount = totalIncome - totalExpenses;
+  const savingsRate = totalIncome > 0 ? (netAmount / totalIncome) * 100 : 0;
+  const totalWealth = totalIncome + Math.abs(totalExpenses); // Total money flow
+
+  logger.info(
+    {
+      totalIncome,
+      totalExpenses,
+      netAmount,
+      savingsRate,
+      currency: defaultCurrency,
+      transactionCount: filteredTransactions.length,
+    },
+    "Dashboard calculations completed"
+  );
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -561,7 +426,7 @@ export default function DashboardPage() {
         setLoginEmail("");
         setLoginPassword("");
       }
-    } catch (error) {
+    } catch {
       setLoginError("An unexpected error occurred");
     } finally {
       setLoginLoading(false);
@@ -606,7 +471,7 @@ export default function DashboardPage() {
         setSignupConfirmPassword("");
         setSignupFullName("");
       }
-    } catch (error) {
+    } catch {
       setSignupError("An unexpected error occurred");
     } finally {
       setSignupLoading(false);
@@ -629,7 +494,7 @@ export default function DashboardPage() {
         setForgotPasswordMessage("Check your email for the password reset link!");
         setForgotPasswordEmail("");
       }
-    } catch (error) {
+    } catch {
       setForgotPasswordMessage("An unexpected error occurred");
     } finally {
       setForgotPasswordLoading(false);
@@ -646,32 +511,12 @@ export default function DashboardPage() {
       });
 
       if (error) {
-        console.error(`${provider} sign-in error:`, error);
+        console.error(`${provider} sign-in error:`, error.message);
       }
-    } catch (error) {
-      console.error(`${provider} sign-in error:`, error);
+    } catch {
+      console.error(`${provider} sign-in error occurred`);
     }
   };
-
-  // Show loading state while auth is loading
-  if (authLoading) {
-    return (
-      <div className="p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader className="space-y-0 pb-2">
-                <div className="h-4 bg-muted rounded w-1/2"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-8 bg-muted rounded w-3/4"></div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   // Show guest message if no user is authenticated
   if (!user) {
@@ -684,7 +529,7 @@ export default function DashboardPage() {
             </div>
             <CardTitle className="text-2xl">Welcome to Coinmind</CardTitle>
             <CardDescription>
-              You're currently browsing as a guest. Explore the app and try our features!
+              You&apos;re currently browsing as a guest. Explore the app and try our features!
             </CardDescription>
           </CardHeader>
           <CardContent className="text-center space-y-4">
@@ -840,7 +685,7 @@ export default function DashboardPage() {
               </form>
 
               <div className="text-center text-sm">
-                Don't have an account?{" "}
+                Don&apos;t have an account?{" "}
                 <Button
                   variant="link"
                   className="px-0"
@@ -1052,7 +897,7 @@ export default function DashboardPage() {
               </div>
               <DialogTitle className="text-2xl font-bold">Reset your password</DialogTitle>
               <DialogDescription>
-                Enter your email address and we'll send you a link to reset your password
+                Enter your email address and we&apos;ll send you a link to reset your password
               </DialogDescription>
             </DialogHeader>
             

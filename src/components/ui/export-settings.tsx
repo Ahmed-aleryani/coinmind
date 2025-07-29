@@ -22,8 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
-import { Download, Calendar, Filter, BarChart3, FileText } from 'lucide-react';
+import { Download, BarChart3, FileText } from 'lucide-react';
 import { ExportOptions } from '@/lib/services/export.service';
 
 interface ExportSettingsProps {
@@ -51,7 +50,6 @@ const EXPORT_FORMATS = [
 
 export function ExportSettings({
   onExport,
-  supportedCurrencies,
   defaultCurrency,
   isLoading = false,
 }: ExportSettingsProps) {
@@ -83,13 +81,7 @@ export function ExportSettings({
 
 
 
-  const getDateRangeLabel = () => {
-    const option = DATE_RANGE_OPTIONS.find(opt => opt.value === options.dateRange.type);
-    if (options.dateRange.type === 'custom' && options.dateRange.startDate && options.dateRange.endDate) {
-      return `${options.dateRange.startDate.toLocaleDateString()} - ${options.dateRange.endDate.toLocaleDateString()}`;
-    }
-    return option?.label || 'Select date range';
-  };
+
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>

@@ -122,7 +122,7 @@ ${userLanguage ? `User language: ${userLanguage}` : ""}`;
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, language, type } = await request.json();
+    const { message, type } = await request.json();
 
     if (!message || typeof message !== "string") {
       return NextResponse.json(
@@ -241,7 +241,7 @@ Respond naturally in the appropriate language based on the file name and AI anal
                 isDuplicate: true,
               },
             });
-          } catch (error) {
+          } catch {
             // Fallback to simple message if AI fails
             const fallbackMessage = `⚠️ **Duplicate File Detected**
 
@@ -286,15 +286,12 @@ Would you like me to import these transactions to your account?
             fileInfo: fileInfo, // Return file info for tracking
           },
         });
-      } catch (error) {
-        logger.error(
-          { error: error instanceof Error ? error.message : error },
-          "CSV import failed"
-        );
+      } catch {
+        logger.error("CSV import failed");
         return NextResponse.json(
           {
             success: false,
-            error: `CSV import failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+            error: "CSV import failed",
           },
           { status: 500 }
         );
@@ -332,10 +329,7 @@ Would you like me to import these transactions to your account?
         // Import each transaction
         for (const transaction of result.transactions) {
           try {
-            // Convert amount to user's default currency if needed
-            let finalAmount = transaction.amount;
-            let finalCurrency = defaultCurrency;
-            let conversionRate = 1;
+
 
             // For now, assume CSV amounts are in USD
             const csvCurrency = "USD";
@@ -552,24 +546,7 @@ Your transactions have been added to your account. You can view them in the dash
             }
           }
 
-          // Create transaction with new multi-currency fields
-          const newTransaction = {
-            description: transactionInfo.description,
-            originalAmount: transactionInfo.amount,
-            originalCurrency: transactionCurrency,
-            convertedAmount: finalAmount,
-            convertedCurrency: finalCurrency,
-            conversionRate: conversionRate,
-            conversionFee: 0, // No fee for now
-            category: transactionInfo.category as TransactionCategory,
-            date: transactionInfo.date || new Date(), // Use parsed date from AI
-            type:
-              transactionInfo.type ||
-              ((transactionInfo.amount > 0 ? "income" : "expense") as
-                | "income"
-                | "expense"),
-            vendor: transactionInfo.vendor || "Unknown",
-          };
+
 
           await services.transactions.createTransaction(userId, {
             amount: transactionInfo.amount,
@@ -652,7 +629,7 @@ Examples:
             const result = await model.generateContent(transactionErrorPrompt);
             const response = await result.response;
             responseText = response.text();
-          } catch (aiError) {
+          } catch {
             // Fallback to simple error message if AI fails
             responseText = "Sorry, there was an error adding the transaction. Please try again.";
           }

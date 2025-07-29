@@ -162,7 +162,7 @@ RULES:
         transactionDate = new Date();
       }
       
-      let amount = parsed.amount ? Math.abs(Number(parsed.amount)) : undefined; // Ensure positive
+      const amount = parsed.amount ? Math.abs(Number(parsed.amount)) : undefined; // Ensure positive
       let type: 'income' | 'expense' | undefined = parsed.type || undefined;
       
       // Validate type

@@ -1,17 +1,17 @@
 "use client"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabaseClient } from "@/lib/auth-client"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { Mail, Lock, Github, Chrome, User } from "lucide-react"
 import Link from "next/link"
 
-export default function SignupPage() {
+function SignupForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -19,7 +19,6 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirectTo") || "/dashboard"
 
@@ -57,7 +56,7 @@ export default function SignupPage() {
       } else {
         setMessage("Check your email for the confirmation link!")
       }
-    } catch (error) {
+    } catch {
       setError("An unexpected error occurred")
     } finally {
       setLoading(false)
@@ -79,7 +78,7 @@ export default function SignupPage() {
       if (error) {
         setError(error.message)
       }
-    } catch (error) {
+    } catch {
       setError("An unexpected error occurred")
     } finally {
       setLoading(false)
@@ -227,5 +226,21 @@ export default function SignupPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </CardContent>
+        </Card>
+      </div>
+    }>
+      <SignupForm />
+    </Suspense>
   )
 } 

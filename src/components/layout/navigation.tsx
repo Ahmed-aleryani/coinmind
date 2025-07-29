@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Plus, BarChart3, List, MessageCircle, FileText } from "lucide-react";
+import { BarChart3, List } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
