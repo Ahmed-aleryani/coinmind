@@ -329,10 +329,13 @@ Would you like me to import these transactions to your account?
         // Import each transaction
         for (const transaction of result.transactions) {
           try {
-
-
             // For now, assume CSV amounts are in USD
             const csvCurrency = "USD";
+            
+            // Initialize conversion variables with default values
+            let finalAmount = transaction.amount;
+            let finalCurrency = csvCurrency;
+            let conversionRate = 1;
             if (csvCurrency !== defaultCurrency) {
               try {
                 const converted = await convertAmount(

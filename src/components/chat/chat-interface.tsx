@@ -360,6 +360,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const [speechSupported, setSpeechSupported] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [lastUploadedFile, setLastUploadedFile] = useState<{ name: string; size: number; lastModified: number } | null>(null);
+  const [lastUploadedReceipt, setLastUploadedReceipt] = useState<{ name: string; size: number; lastModified: number } | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
