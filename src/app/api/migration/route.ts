@@ -4,7 +4,7 @@ import { db } from '@/lib/db/db';
 import { sql } from 'drizzle-orm';
 import logger from '@/lib/utils/logger';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const status = getMigrationStatus();
     

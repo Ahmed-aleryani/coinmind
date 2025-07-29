@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, Moon, Sun, User, LogOut, LogIn, MessageCircle, List, Eye, EyeOff, Mail, Lock, User as UserIcon } from "lucide-react";
+import { Menu, Moon, Sun, User, LogOut, LogIn, List, Eye, EyeOff, Mail, Lock, User as UserIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -28,7 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
+
 import { useState } from "react";
 import { supabaseClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
@@ -66,7 +66,7 @@ export function Header() {
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
-  const [isSigningIn, setIsSigningIn] = useState(false);
+
 
   const handleCurrencyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newCurrency = e.target.value;
@@ -100,7 +100,7 @@ export function Header() {
         setLoginEmail("");
         setLoginPassword("");
       }
-    } catch (error) {
+    } catch {
       setLoginError("An unexpected error occurred");
     } finally {
       setLoginLoading(false);
@@ -145,7 +145,7 @@ export function Header() {
         setSignupConfirmPassword("");
         setSignupFullName("");
       }
-    } catch (error) {
+    } catch {
       setSignupError("An unexpected error occurred");
     } finally {
       setSignupLoading(false);
@@ -168,7 +168,7 @@ export function Header() {
         setForgotPasswordMessage("Check your email for the password reset link!");
         setForgotPasswordEmail("");
       }
-    } catch (error) {
+    } catch {
       setForgotPasswordMessage("An unexpected error occurred");
     } finally {
       setForgotPasswordLoading(false);
@@ -185,25 +185,14 @@ export function Header() {
       });
 
       if (error) {
-        console.error(`${provider} sign-in error:`, error);
+        console.error(`${provider} sign-in error:`, error.message);
       }
-    } catch (error) {
-      console.error(`${provider} sign-in error:`, error);
+    } catch {
+      console.error(`${provider} sign-in error occurred`);
     }
   };
 
-  const handleGuestSignIn = async () => {
-    setIsSigningIn(true)
-    try {
-      await signInAnonymously()
-      router.push('/')
-    } catch (error) {
-      console.error('Guest sign-in failed:', error)
-      router.push('/')
-    } finally {
-      setIsSigningIn(false)
-    }
-  }
+
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -534,7 +523,7 @@ export function Header() {
             </form>
 
             <div className="text-center text-sm">
-              Don't have an account?{" "}
+              Don&apos;t have an account?{" "}
               <Button
                 variant="link"
                 className="px-0"
@@ -746,7 +735,7 @@ export function Header() {
             </div>
             <DialogTitle className="text-2xl font-bold">Reset your password</DialogTitle>
             <DialogDescription>
-              Enter your email address and we'll send you a link to reset your password
+              Enter your email address and we&apos;ll send you a link to reset your password
             </DialogDescription>
           </DialogHeader>
           

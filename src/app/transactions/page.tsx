@@ -1,72 +1,22 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  formatCurrency,
-  formatDate,
-  getCategoryEmoji,
-} from "@/lib/utils/formatters";
-import {
-  Plus,
-  Search,
-  Filter,
-  MoreHorizontal,
-  Edit,
-  Trash2,
-  Download,
-  Upload,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { CurrencyInfo } from "@/components/ui/currency-info";
-import { useCurrency } from "@/components/providers/currency-provider";
-import { useAuth } from "@/components/providers/auth-provider";
-import { useRouter } from "next/navigation";
-import logger from "@/lib/utils/logger";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ExportSettings } from "@/components/ui/export-settings";
 import { ExportOptions } from "@/lib/services/export.service";
+import { useAuth } from "@/components/providers/auth-provider";
+import { useCurrency } from "@/components/providers/currency-provider";
+import { useRouter } from "next/navigation";
+import logger from "@/lib/utils/logger";
+import { Textarea } from "@/components/ui/textarea";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Edit, Trash2, ChevronDown, ChevronUp, Plus, Search, Upload } from "lucide-react";
+import { formatCurrency, formatDate, getCategoryEmoji } from "@/lib/utils/formatters";
 
 interface Transaction {
   id: string;
@@ -97,67 +47,32 @@ const CATEGORIES = [
   "Shopping", 
   "Transportation",
   "Entertainment",
-  "Bills & Utilities",
   "Healthcare",
+  "Utilities",
+  "Housing",
   "Education",
   "Travel",
-  "Other Expenses",
-  "Salary",
-  "Business",
-  "Investment",
-  "Gift",
-  "Other Income",
+  "Other"
 ];
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filteredTransactions, setFilteredTransactions] = useState<
-    Transaction[]
-  >([]);
+  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [groupedTransactions, setGroupedTransactions] = useState<GroupedTransactions[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] =
-    useState<Transaction | null>(null);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
-  const { defaultCurrency, supportedCurrencies, isCurrencyLoading } = useCurrency();
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
-  
-  // Client-side authentication check
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/');
-    }
-  }, [user, authLoading, router]);
-
-  // Show loading while checking authentication
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Redirect if not authenticated (no user at all)
-  if (!user) {
-    return null; // Component will unmount and redirect
-  }
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const [totalCount, setTotalCount] = useState(0);
   const pageSize = 50;
   
   // Infinite scroll refs
@@ -173,7 +88,11 @@ export default function Transactions() {
     date: new Date().toISOString().split("T")[0],
   });
 
-  const fetchTransactions = async (page = 0, append = false) => {
+  const { user, loading: authLoading } = useAuth();
+  const { defaultCurrency, supportedCurrencies } = useCurrency();
+  const router = useRouter();
+
+  const fetchTransactions = useCallback(async (page = 0, append = false) => {
     try {
       if (!append) {
         setIsLoading(true);
@@ -213,7 +132,6 @@ export default function Transactions() {
         // Update pagination state
         if (data.pagination) {
           setHasMore(data.pagination.hasMore);
-          setTotalCount(data.pagination.totalCount);
         }
       }
     } catch (error) {
@@ -222,7 +140,7 @@ export default function Transactions() {
       setIsLoading(false);
       setIsLoadingMore(false);
     }
-  };
+  }, [defaultCurrency, pageSize]);
 
   const loadMoreTransactions = useCallback(async () => {
     if (!hasMore || isLoadingMore) return;
@@ -230,7 +148,7 @@ export default function Transactions() {
     const nextPage = currentPage + 1;
     setCurrentPage(nextPage);
     await fetchTransactions(nextPage, true);
-  }, [hasMore, isLoadingMore, currentPage]);
+  }, [hasMore, isLoadingMore, currentPage, fetchTransactions]);
 
   // Intersection Observer for infinite scroll
   const lastTransactionElementRef = useCallback((node: HTMLTableRowElement | null) => {
@@ -250,52 +168,37 @@ export default function Transactions() {
     if (node) observerRef.current.observe(node);
   }, [isLoadingMore, hasMore, loadMoreTransactions]);
 
-  // Initial data load
+  // Initial data fetch
   useEffect(() => {
-    fetchTransactions(0, false);
-  }, []);
+    if (defaultCurrency) {
+      fetchTransactions(0, false);
+    }
+  }, [defaultCurrency, fetchTransactions]);
 
+  // Reset pagination when filters change
   useEffect(() => {
-    // Only fetch if no filters are active (to avoid double fetch)
+    if (searchQuery || categoryFilter !== "" || typeFilter !== "all") {
+      // When filtering, we should fetch fresh data
+      setCurrentPage(0);
+      setTransactions([]);
+      fetchTransactions(0, false);
+    }
+  }, [searchQuery, categoryFilter, typeFilter, defaultCurrency, fetchTransactions]);
+
+  // Only fetch if no filters are active (to avoid double fetch)
+  useEffect(() => {
     if (searchQuery === "" && categoryFilter === "all" && typeFilter === "all") {
       setCurrentPage(0);
       setTransactions([]);
       fetchTransactions(0, false);
     }
-  }, [defaultCurrency]);
-
-  // Filter transactions based on search and filters
-  useEffect(() => {
-    let filtered = transactions;
-
-    // Search filter
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (t) =>
-          t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          t.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          t.category.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    // Category filter
-    if (categoryFilter !== "all") {
-      filtered = filtered.filter((t) => t.category === categoryFilter);
-    }
-
-    // Type filter
-    if (typeFilter !== "all") {
-      filtered = filtered.filter((t) => t.type === typeFilter);
-    }
-
-    setFilteredTransactions(filtered);
-  }, [transactions, searchQuery, categoryFilter, typeFilter]);
+  }, [defaultCurrency, searchQuery, categoryFilter, typeFilter, fetchTransactions]);
 
   // Group transactions by date
   useEffect(() => {
     const grouped = filteredTransactions.reduce((groups: GroupedTransactions[], transaction) => {
-      const dateKey = transaction.date.toISOString().split('T')[0];
-      const existingGroup = groups.find(group => group.date === dateKey);
+      const dateKey = new Date(transaction.date).toISOString().split("T")[0];
+      const existingGroup = groups.find(g => g.date === dateKey);
       
       if (existingGroup) {
         existingGroup.transactions.push(transaction);
@@ -315,30 +218,61 @@ export default function Transactions() {
       return groups;
     }, []);
 
-    // Sort by date (newest first)
-    grouped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
     setGroupedTransactions(grouped);
   }, [filteredTransactions]);
 
-  // Reset pagination when filters change
+  // Filter transactions based on search and filters
   useEffect(() => {
-    if (searchQuery || categoryFilter !== "all" || typeFilter !== "all") {
-      // When filtering, we should fetch fresh data
-      setCurrentPage(0);
-      setTransactions([]);
-      fetchTransactions(0, false);
-    }
-  }, [searchQuery, categoryFilter, typeFilter, defaultCurrency]);
+    let filtered = transactions;
 
-  // Cleanup intersection observer on unmount
+    // Apply search filter
+    if (searchQuery) {
+      filtered = filtered.filter(t => 
+        t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.category.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Apply category filter
+    if (categoryFilter && categoryFilter !== "all") {
+      filtered = filtered.filter(t => t.category === categoryFilter);
+    }
+
+    // Apply type filter
+    if (typeFilter !== "all") {
+      filtered = filtered.filter(t => t.type === typeFilter);
+    }
+
+    // Sort by date (newest first)
+    filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    setFilteredTransactions(filtered);
+  }, [transactions, searchQuery, categoryFilter, typeFilter]);
+
+  // Client-side authentication check
   useEffect(() => {
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-    };
-  }, []);
+    if (!authLoading && !user) {
+      router.push('/');
+    }
+  }, [user, authLoading, router]);
+
+  // Show loading while checking authentication
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect if not authenticated (no user at all)
+  if (!user) {
+    return null; // Component will unmount and redirect
+  }
 
   const handleEdit = (transaction: Transaction) => {
     setEditingTransaction(transaction);
@@ -615,7 +549,7 @@ export default function Transactions() {
               </SelectContent>
             </Select>
 
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as "all" | "income" | "expense")}>
               <SelectTrigger className="w-full md:w-32">
                 <SelectValue placeholder="All Types" />
               </SelectTrigger>

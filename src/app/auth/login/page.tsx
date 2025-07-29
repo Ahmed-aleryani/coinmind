@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,7 +11,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Mail, Lock, Github, Chrome } from "lucide-react"
 import Link from "next/link"
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -36,7 +36,7 @@ export default function LoginPage() {
       } else {
         router.push(redirectTo)
       }
-    } catch (error) {
+    } catch {
       setError("An unexpected error occurred")
     } finally {
       setLoading(false)
@@ -58,7 +58,7 @@ export default function LoginPage() {
       if (error) {
         setError(error.message)
       }
-    } catch (error) {
+    } catch {
       setError("An unexpected error occurred")
     } finally {
       setLoading(false)
@@ -156,7 +156,7 @@ export default function LoginPage() {
           </div>
 
           <div className="text-center text-sm">
-            <span className="text-muted-foreground">Don't have an account? </span>
+            <span className="text-muted-foreground">Don&apos;t have an account? </span>
             <Link href="/auth/signup" className="text-primary hover:underline">
               Sign up
             </Link>
@@ -170,5 +170,13 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LoginForm />
+    </Suspense>
   )
 } 

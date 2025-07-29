@@ -70,7 +70,7 @@ export function ReceiptUpload() {
       }
 
       setReceiptData(result.data);
-    } catch (err) {
+    } catch {
       setError("Failed to upload receipt. Please try again.");
     } finally {
       setIsUploading(false);
@@ -116,7 +116,7 @@ export function ReceiptUpload() {
       } else {
         setError("Failed to save transaction");
       }
-    } catch (err) {
+    } catch {
       setError("Failed to save transaction");
     }
   };
