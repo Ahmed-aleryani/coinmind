@@ -50,7 +50,8 @@ export class GeminiService {
   private aiClient: GoogleGenAI;
   private readonly MODEL_NAMES = {
     FLASH: 'gemini-2.5-flash',
-    PRO: 'gemini-2.5-pro-preview-06-05'
+    PRO: 'gemini-2.5-pro-preview-06-05',
+    GEMINI_2_5_FLASH_LITE:"gemini-2.5-flash-lite"
   };
   private dbFunctions: DatabaseFunctions;
 
@@ -115,7 +116,7 @@ RULES:
 
     try {
       const response = await this.aiClient.models.generateContent({
-        model: this.MODEL_NAMES.FLASH,
+        model: this.MODEL_NAMES.GEMINI_2_5_FLASH_LITE,
         contents: [{
           role: 'user',
           parts: [{ text: prompt }]
@@ -228,7 +229,7 @@ RULES:
 
     try {
       const response = await this.aiClient.models.generateContent({
-        model: this.MODEL_NAMES.FLASH,
+        model: this.MODEL_NAMES.GEMINI_2_5_FLASH_LITE,
         contents: [{
           role: 'user',
           parts: [
@@ -415,7 +416,7 @@ Determine what data you need to answer the user's question comprehensively. Retu
 Be smart about combining functions to provide the most insightful answer possible.`;
       
       const response = await this.aiClient.models.generateContent({
-        model: this.MODEL_NAMES.FLASH,
+        model: this.MODEL_NAMES.GEMINI_2_5_FLASH_LITE,
         contents: [{
           role: 'user',
           parts: [{ text: functionDetectionPrompt }]
@@ -509,7 +510,7 @@ ${functionResults.map(r => `${r.name}: ${r.error ? `Error: ${r.error}` : JSON.st
 Respond in a helpful, insightful, and actionable way that makes the user feel empowered about their financial decisions.`;
 
       const finalResponse = await this.aiClient.models.generateContent({
-        model: this.MODEL_NAMES.FLASH,
+        model: this.MODEL_NAMES.GEMINI_2_5_FLASH_LITE,
         contents: [{
           role: 'user',
           parts: [{ text: finalPrompt }]
