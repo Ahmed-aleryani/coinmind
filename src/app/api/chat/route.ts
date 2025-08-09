@@ -367,8 +367,8 @@ Would you like me to import these transactions to your account?
         // Import each transaction
         for (const transaction of result.transactions) {
           try {
-            // For now, assume CSV amounts are in USD
-            const csvCurrency = "USD";
+            // Prefer currency parsed from CSV if available
+            const csvCurrency = (transaction as any).currency || "USD";
             
             // Initialize conversion variables with default values
             let finalAmount = transaction.amount;
@@ -422,6 +422,7 @@ Would you like me to import these transactions to your account?
               currency: newTransaction.originalCurrency,
               description: newTransaction.description,
               category: newTransaction.category,
+              type: transaction.type, // ensure correct income/expense type
               date: newTransaction.date,
               vendor: newTransaction.vendor,
             });
