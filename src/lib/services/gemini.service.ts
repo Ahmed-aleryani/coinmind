@@ -49,9 +49,9 @@ export interface ReceiptData {
 export class GeminiService {
   private aiClient: GoogleGenAI;
   private readonly MODEL_NAMES = {
-    FLASH: 'gemini-2.5-flash',
+    FLASH: 'gemini-2.5-flash-lite',
     PRO: 'gemini-2.5-pro-preview-06-05',
-    GEMINI_2_5_FLASH_LITE:"gemini-2.5-flash-lite"
+    GEMINI_2_5_FLASH_LITE:'gemini-2.5-flash-lite'
   };
   private dbFunctions: DatabaseFunctions;
 

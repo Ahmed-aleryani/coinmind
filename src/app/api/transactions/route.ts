@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServices } from '@/lib/services';
+import { cookies } from 'next/headers';
 import { validateTransactionInput } from '@/lib/utils/parsers';
 import logger from '@/lib/utils/logger';
 
@@ -10,8 +11,8 @@ export async function GET(request: NextRequest) {
   logger.info({ requestId, method: 'GET', url: request.url }, 'Transactions API request started');
   
   try {
-    const { services, userId } = await getServices();
-    
+    const uid = (await cookies()).get('cm_uid')?.value;
+    const { services, userId } = await getServices(uid);
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
@@ -41,12 +42,21 @@ export async function GET(request: NextRequest) {
       transactions = await services.transactions.findByDateRange(userId, startDate, endDate);
       logger.info({ requestId, startDate, endDate, resultCount: transactions.length }, 'Fetched transactions by date range');
     } else {
+      // Use cheap stats when first load without filters, but we still need rows to render.
       transactions = await services.transactions.getTransactions(userId, limit, offset);
       logger.info({ requestId, resultCount: transactions.length }, 'Fetched all transactions');
     }
 
     // If a target currency is specified, convert all transactions to that currency
     if (targetCurrency) {
+      // Skip conversion if everything is already in the target currency (fast path)
+      const needsConversion = transactions.some((t: any) => {
+        const origCurrency = t.originalCurrency || t.currency;
+        return origCurrency !== targetCurrency;
+      });
+      if (!needsConversion) {
+        logger.info({ requestId, targetCurrency }, 'All transactions already in target currency; skipping conversion');
+      } else {
       logger.info({ requestId, targetCurrency, transactionCount: transactions.length }, 'Starting currency conversion for transactions');
       const { getGlobalRates, convertWithGlobalRates } = await import('@/lib/utils/currency');
       // Fetch all rates with a single API call (base USD)
@@ -128,6 +138,7 @@ export async function GET(request: NextRequest) {
           convertedCurrency: transactions[0].convertedCurrency
         } : null
       }, 'Currency conversion completed');
+      }
     }
     
     // Get total count for pagination
@@ -183,7 +194,8 @@ export async function POST(request: NextRequest) {
   logger.info({ requestId, method: 'POST', url: request.url }, 'Create transaction request started');
   
   try {
-    const { services, userId } = await getServices();
+    const uid = (await cookies()).get('cm_uid')?.value;
+    const { services, userId } = await getServices(uid);
     
     const body = await request.json();
     

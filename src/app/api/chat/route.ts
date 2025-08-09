@@ -7,44 +7,21 @@ import { convertAmount } from "@/lib/utils/currency";
 import { CurrencyFormatter } from "@/lib/utils/currency-formatter";
 import { detectLanguage } from "@/lib/utils/language-detection";
 import { getServices } from "@/lib/services";
+import { cookies } from "next/headers";
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
-// Enhanced system prompt for advanced, context-aware financial assistance
-const SYSTEM_PROMPT = `You are CoinMind, an intelligent and proactive financial assistant. Your mission is to help users manage, understand, and optimize their personal finances with clarity and empathy.
+// Concise system prompt to reduce latency
+const SYSTEM_PROMPT = `You are CoinMind, a concise financial assistant.
+- Reply in the user's language.
+- Be brief. Prefer short sentences.
+- Use user's default currency unless another is specified: {defaultCurrency}.
+- If user logs a transaction, confirm and stop.
+- If user asks a financial question, answer directly with 1-3 bullet points.
 
-User's current financial snapshot:
-- Total balance: {balance}
-- Total income: {income}
-- Total expenses: {expenses}
-- Number of transactions: {transactionCount}
-- Default currency: {defaultCurrency}
-
-Guidelines for interaction:
-1. **CRITICAL**: Always reply in the same language as the user's message. If the user writes in Arabic, respond in Arabic. If they write in Spanish, respond in Spanish, etc.
-2. Offer practical, actionable, and money-conscious financial advice.
-3. When parsing transactions, extract the currency if mentioned; otherwise, default to the user's currency.
-4. Provide insightful analysis on spending patterns, budgeting, and overall financial health.
-5. Ask clarifying questions if the user's input is ambiguous or incomplete.
-6. Use a friendly, professional tone, and adapt to the user's cultural context.
-7. Format all currency amounts using the user's default currency unless another is specified.
-8. Proactively suggest follow-up questions and personalized recommendations based on the user's financial context.
-9. If the user asks about financial goals, savings, or investments, offer tailored suggestions and encouragement.
-10. If you detect signs of financial stress or concern, respond with empathy and supportive advice.
-
-Currency handling:
-- If user mentions a currency in their message, use that currency
-- If no currency mentioned, use the default currency: {defaultCurrency}
-- When user provides different currency than default, system will handle exchange rate conversion
-
-Response examples:
-- "Great! I've added your $50 grocery expense. You've spent $240 on food this month—still within your usual range."
-- "Perfect! Recorded your €25 coffee expense. That's your 4th coffee this week—maybe time for a coffee budget? ☕"
-- "Your balance is {balance}. That's a healthy financial position! Would you like tips on investing the surplus?"
-- "I've noticed your entertainment spending increased by 20% this month. Would you like to review your budget or set a limit?"
-- "Would you like to set a savings goal or receive tips on reducing expenses in a specific category?"`;
+Snapshot: balance={balance}, income={income}, expenses={expenses}, txns={transactionCount}.`;
 
 // Helper function to determine if user is asking about their financial data using AI
 async function handleFinancialQueryWithLLM(message: string, userLanguage?: string): Promise<{ isFinancial: boolean; intent: string; response: string }> {
@@ -77,7 +54,7 @@ Intent categories:
 User message: "${message}"
 ${userLanguage ? `User language: ${userLanguage}` : ""}`;
 
-    const result = await model.generateContent(prompt);
+    const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 512 } });
     const response = await result.response;
     const text = response.text().trim();
 
@@ -123,6 +100,8 @@ ${userLanguage ? `User language: ${userLanguage}` : ""}`;
 export async function POST(request: NextRequest) {
   try {
     const { message, type } = await request.json();
+    const url = new URL(request.url);
+    const stream = url.searchParams.get('stream') === '1';
 
     if (!message || typeof message !== "string") {
       return NextResponse.json(
@@ -155,9 +134,7 @@ export async function POST(request: NextRequest) {
         const { fileInfo, previousFile } = await request.json();
         
         // Extract spreadsheet data from message
-        const csvMatch = message.match(
-          /Please analyze and import this spreadsheet file data:\n\n([\s\S]*)/
-        );
+        const csvMatch = message.match(/Please analyze and import this spreadsheet file data:\n\n([\s\S]*)/);
         if (!csvMatch) {
           logger.error("No spreadsheet data found in message");
           return NextResponse.json(
@@ -169,12 +146,28 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        const csvText = csvMatch[1];
+         const csvText = csvMatch[1];
         logger.info({ csvTextLength: csvText.length, csvTextPreview: csvText.substring(0, 200) }, "Extracted spreadsheet data");
         
         // Use AI to analyze if this is a duplicate file
         let duplicateAnalysis = "";
         if (previousFile) {
+          // Fast path: exact duplicate by name/size/mtime without AI
+          if (
+            previousFile.name === fileInfo.name &&
+            previousFile.size === fileInfo.size &&
+            previousFile.lastModified === fileInfo.lastModified
+          ) {
+            const fallbackMessage = `⚠️ Duplicate File Detected\n\n**File Details:**\n- Name: ${fileInfo.name}\n- Size: ${fileInfo.size} bytes\n- Type: ${fileInfo.type}\n\nPlease select a different file or wait a moment before uploading the same file again to avoid duplicate transactions.`;
+            return NextResponse.json({
+              success: true,
+              data: {
+                message: fallbackMessage,
+                type: "duplicate_detected",
+                isDuplicate: true,
+              },
+            });
+          }
           const duplicatePrompt = `You are a multilingual AI assistant analyzing file uploads. 
 
 Analyze if this file upload is a duplicate:
@@ -202,7 +195,7 @@ Consider:
 Analyze and respond naturally in the appropriate language:`;
 
           try {
-            const duplicateResponse = await model.generateContent(duplicatePrompt);
+            const duplicateResponse = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: duplicatePrompt }] }], generationConfig: { maxOutputTokens: 256 } });
             duplicateAnalysis = duplicateResponse.response.text();
             logger.info({ duplicateAnalysis }, "AI duplicate analysis completed");
           } catch (error) {
@@ -229,7 +222,7 @@ Generate a complete, user-friendly duplicate detection message in the same langu
 Respond naturally in the appropriate language based on the file name and AI analysis.`;
 
           try {
-            const result = await model.generateContent(duplicatePrompt);
+            const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: duplicatePrompt }] }], generationConfig: { maxOutputTokens: 256 } });
             const response = await result.response;
             const duplicateMessage = response.text();
             
@@ -319,7 +312,8 @@ Would you like me to import these transactions to your account?
         const result = await parseCSVWithGemini(csvText);
 
         // Get services and user profile
-        const { services, userId } = await getServices();
+        const uidCsv = (await cookies()).get('cm_uid')?.value;
+        const { services, userId } = await getServices(uidCsv);
         const profile = await services.repositories.profiles.findById(userId);
         const defaultCurrency = profile?.defaultCurrency || "USD";
 
@@ -439,18 +433,13 @@ Your transactions have been added to your account. You can view them in the dash
 
     // Get services and financial data
     try {
-      const { services, userId } = await getServices();
-      const transactions = await services.transactions.getTransactions(userId, 1000);
-
-      const income = transactions
-        .filter((t: any) => (t.amount || 0) > 0)
-        .reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
-      const expenses = Math.abs(
-        transactions
-          .filter((t: any) => (t.amount || 0) < 0)
-          .reduce((sum: number, t: any) => sum + (t.amount || 0), 0)
-      );
-      const totalBalance = income - expenses;
+      const uid = (await cookies()).get('cm_uid')?.value;
+      const { services, userId } = await getServices(uid);
+      // Faster summary via stats instead of fetching 1000 rows
+      const stats = await services.transactions.getTransactionStats(userId);
+      const income = stats.totalIncome || 0;
+      const expenses = stats.totalExpenses || 0;
+      const totalBalance = stats.netAmount ?? (income - expenses);
 
       // Get user's default currency for formatting
       const profile = await services.repositories.profiles.findById(userId);
@@ -562,42 +551,17 @@ Your transactions have been added to your account. You can view them in the dash
           });
           transactionAdded = true;
 
-          // Create success message in the detected language
+          // Fast success message without extra AI call
           const originalAmountStr = CurrencyFormatter.formatWithSymbol(
             Math.abs(transactionInfo.amount),
             transactionCurrency
           );
-
-          // Let AI generate a natural success message
-          const transactionSuccessPrompt = SYSTEM_PROMPT
-            .replace("{balance}", formattedBalance)
-            .replace("{income}", formattedIncome) 
-            .replace("{expenses}", formattedExpenses)
-            .replace("{transactionCount}", (transactions.length + 1).toString())
-            .replace("{defaultCurrency}", defaultCurrency) +
-            `
-
-User message: ${message}
-
-A transaction has been successfully added:
-- Description: ${transactionInfo.description}
-- Amount: ${originalAmountStr}
-- Category: ${transactionInfo.category}
-- Type: ${transactionInfo.type}
-- Date: ${transactionInfo.date?.toDateString() || new Date().toDateString()}
-
-Generate a natural, friendly response acknowledging the transaction was added. Include helpful insights or suggestions if appropriate. Respond in the same language as the user's message.
-
-Examples:
-- "Great! I've added your $6 coffee purchase to your expenses. That's your 3rd coffee this week - maybe time for a coffee budget? ☕"
-- "Perfect! Recorded your $50 grocery expense. You've spent $240 on food this month so far."
-- "Got it! Added your $2000 salary to your income. Your balance is looking healthy this month! 💰"
-- "Nice! Your $15 lunch expense has been saved. Food spending is at $180 this week - still within your usual range."`;
-
-          // Generate AI success message
-          const result = await model.generateContent(transactionSuccessPrompt);
-          const response = await result.response;
-          responseText = response.text();
+          const lang = detectLanguage(message).code;
+          if (lang === 'ar') {
+            responseText = `✅ تم حفظ المعاملة بنجاح! **${originalAmountStr}** لدى ${transactionInfo.vendor || 'غير معروف'}.`;
+          } else {
+            responseText = `✅ Added transaction successfully! **${originalAmountStr}** at ${transactionInfo.vendor || 'Unknown'}.`;
+          }
         } catch (transactionError) {
           logger.error(
             {
@@ -609,33 +573,11 @@ Examples:
             "Transaction addition error"
           );
 
-          // Let AI generate a natural error message
-          const transactionErrorPrompt = SYSTEM_PROMPT
-            .replace("{balance}", formattedBalance)
-            .replace("{income}", formattedIncome) 
-            .replace("{expenses}", formattedExpenses)
-            .replace("{transactionCount}", transactions.length.toString())
-            .replace("{defaultCurrency}", defaultCurrency) +
-            `
-
-User message: ${message}
-
-There was an error while trying to add the transaction. Generate a helpful, apologetic response acknowledging the error and suggesting the user try again. Respond in the same language as the user's message.
-
-Examples:
-- "Sorry, I had trouble adding that transaction. Could you try again? Sometimes rephrasing helps!"
-- "Oops! Something went wrong while saving your transaction. Please try again."
-- "I apologize, but I couldn't save that transaction. Could you try entering it again?"`;
-
-          // Generate AI error message
-          try {
-            const result = await model.generateContent(transactionErrorPrompt);
-            const response = await result.response;
-            responseText = response.text();
-          } catch {
-            // Fallback to simple error message if AI fails
-            responseText = "Sorry, there was an error adding the transaction. Please try again.";
-          }
+          // Fast error message without extra AI call
+          const lang = detectLanguage(message).code;
+          responseText = lang === 'ar'
+            ? 'عذرًا، حدث خطأ أثناء حفظ المعاملة. يرجى المحاولة مرة أخرى.'
+            : 'Sorry, there was an error adding the transaction. Please try again.';
         }
       }
 
@@ -647,7 +589,7 @@ Examples:
             .replace("{balance}", formattedBalance)
             .replace("{income}", formattedIncome)
             .replace("{expenses}", formattedExpenses)
-            .replace("{transactionCount}", transactions.length.toString())
+            .replace("{transactionCount}", (stats.transactionCount || 0).toString())
             .replace("{defaultCurrency}", defaultCurrency) +
           `
 
@@ -655,8 +597,8 @@ User message: ${message}
 
 Remember: Respond in the same language as the user's message.`;
 
-        // Send chat request to Gemini
-        const result = await model.generateContent(prompt);
+        // Send chat request to Gemini (shorter max tokens for speed)
+        const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 200 } });
         const response = await result.response;
         responseText = response.text();
 
@@ -710,13 +652,30 @@ Remember: Respond in the same language as the user's message.`;
         }
       }
 
-      return NextResponse.json({
-        success: true,
-        data: {
-          message: responseText,
-          transactionAdded: transactionAdded,
-        },
-      });
+      if (!stream) {
+        return NextResponse.json({
+          success: true,
+          data: {
+            message: responseText,
+            transactionAdded: transactionAdded,
+          },
+        });
+      } else {
+        // Simple text streaming (SSE-like) for faster first paint
+        const encoder = new TextEncoder();
+        const body = new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(responseText));
+            controller.close();
+          }
+        });
+        return new Response(body, {
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-cache',
+          },
+        });
+      }
     } catch (dbError) {
       logger.error(
         { error: dbError instanceof Error ? dbError.message : dbError },
@@ -726,7 +685,7 @@ Remember: Respond in the same language as the user's message.`;
       // Fallback response without database data
       const fallbackPrompt = `You are a smart financial assistant called CoinMind. The user said: "${message}". Please respond in the same language as the user's message and be helpful with financial advice.`;
 
-      const result = await model.generateContent(fallbackPrompt);
+      const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: fallbackPrompt }] }], generationConfig: { maxOutputTokens: 200 } });
       const response = await result.response;
       const text = response.text();
 

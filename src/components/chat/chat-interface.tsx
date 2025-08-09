@@ -356,6 +356,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [ttsEnabled] = useState(true);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -367,6 +368,10 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const receiptFileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const useMediaRecorderRef = useRef<boolean>(false);
 
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
@@ -383,110 +388,18 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     scrollToBottom();
   }, [messages]);
 
-  // Initialize speech recognition
+  // Initialize voice capability detection (Gemini STT via MediaRecorder only)
   useEffect(() => {
     const windowWithSpeech = window as WindowWithSpeechRecognition;
     const SpeechRecognition =
       windowWithSpeech.SpeechRecognition ||
       windowWithSpeech.webkitSpeechRecognition;
 
-    if (SpeechRecognition) {
+    // Prefer MediaRecorder capability for Gemini STT
+    const hasMediaRecorder = typeof (window as any).MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+    if (hasMediaRecorder) {
       setSpeechSupported(true);
-
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = "auto"; // Let browser auto-detect language
-
-      recognition.onstart = () => {
-        setIsListening(true);
-        setRecordingTime(0);
-        
-        // Start 20-second timer
-        recordingTimerRef.current = setInterval(() => {
-          setRecordingTime((prev) => {
-            if (prev >= 20) {
-              // Auto-stop recording after 20 seconds
-              recognition.stop();
-              return 0;
-            }
-            return prev + 1;
-          });
-        }, 1000);
-      };
-
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
-        let transcript = "";
-        let isFinal = false;
-        let detectedLanguage = "en"; // Default
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          transcript += result[0].transcript;
-          if (result.isFinal) {
-            isFinal = true;
-          }
-        }
-
-        if (isFinal && transcript.trim()) {
-          // Auto-detect language from transcript
-          const languageInfo = detectLanguage(transcript);
-          detectedLanguage = languageInfo.code;
-          
-          logger.info({ transcript, detectedLanguage }, "Voice input completed with language detection");
-          
-          // Set the transcript and auto-send
-          setInput(transcript.trim());
-          setIsListening(false);
-          
-          // Clear timer
-          if (recordingTimerRef.current) {
-            clearInterval(recordingTimerRef.current);
-            recordingTimerRef.current = null;
-          }
-          setRecordingTime(0);
-          
-          // Auto-send the message after a short delay
-          setTimeout(() => {
-            sendMessage(transcript.trim());
-          }, 500);
-        }
-      };
-
-      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-        console.error("Speech recognition error:", event.error);
-        setIsListening(false);
-        setRecordingTime(0);
-        
-        // Clear timer
-        if (recordingTimerRef.current) {
-          clearInterval(recordingTimerRef.current);
-          recordingTimerRef.current = null;
-        }
-
-        // Show error message to user
-        const errorMessage: Message = {
-          id: Date.now().toString(),
-          content: `❌ Speech recognition error: ${event.error}. Please try again or type your message.`,
-          sender: "assistant",
-          timestamp: new Date(),
-          type: "error",
-        };
-        setMessages((prev) => [...prev, errorMessage]);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-        setRecordingTime(0);
-        
-        // Clear timer
-        if (recordingTimerRef.current) {
-          clearInterval(recordingTimerRef.current);
-          recordingTimerRef.current = null;
-        }
-      };
-
-      recognitionRef.current = recognition;
+      useMediaRecorderRef.current = true;
     } else {
       setSpeechSupported(false);
     }
@@ -497,6 +410,13 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       }
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
       }
     };
   }, []); // Remove voiceLang dependency since we're using auto-detection
@@ -537,8 +457,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     setIsLoading(true);
 
     try {
-      // Let AI handle language detection naturally
-      const response = await fetch("/api/chat", {
+      // Let AI handle language detection naturally. Enable streaming for faster first token.
+      const response = await fetch("/api/chat?stream=1", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -552,22 +472,74 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
-      logger.info({data}, "Chat API response:");
-
-      if (data.success) {
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: data.data.message,
-          sender: "assistant",
-          timestamp: new Date(),
-          type: data.data.type || "text",
-          suggestions: data.data.suggestions,
-        };
-
-        setMessages((prev) => [...prev, assistantMessage]);
+      // Streaming mode if server supports it; fallback to JSON
+      const contentType = response.headers.get('Content-Type') || '';
+      if (contentType.includes('text/event-stream') || contentType.includes('text/plain')) {
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let acc = '';
+        const msgId = (Date.now() + 1).toString();
+        let created = false;
+        while (reader) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          acc += decoder.decode(value, { stream: true });
+          // Push partials in chunks
+          if (!created) {
+            created = true;
+            setMessages((prev) => [...prev, { id: msgId, content: '', sender: 'assistant', timestamp: new Date(), type: 'text' }]);
+          }
+          setMessages((prev) => prev.map(m => m.id === msgId ? { ...m, content: acc } : m));
+        }
+        // TTS after render
+        if (ttsEnabled && acc.trim()) {
+          fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: acc, voice: 'Puck', responseMimeType: 'audio/mp3' }),
+          })
+            .then(res => res.json())
+            .then(ttsJson => {
+              if (ttsJson?.success && ttsJson.audio) {
+                const audioSrc = `data:${ttsJson.mimeType || 'audio/mp3'};base64,${ttsJson.audio}`;
+                const audio = new Audio(audioSrc);
+                audio.play().catch(() => {});
+              }
+            })
+            .catch(() => {});
+        }
       } else {
-        throw new Error(data.error || "Unknown error from server");
+        const data = await response.json();
+        logger.info({data}, "Chat API response:");
+        if (data.success) {
+          const assistantMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: data.data.message,
+            sender: "assistant",
+            timestamp: new Date(),
+            type: data.data.type || "text",
+            suggestions: data.data.suggestions,
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+          if (ttsEnabled && assistantMessage.content.trim()) {
+            fetch('/api/tts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: assistantMessage.content, voice: 'Puck', responseMimeType: 'audio/mp3' }),
+            })
+              .then(res => res.json())
+              .then(ttsJson => {
+                if (ttsJson?.success && ttsJson.audio) {
+                  const audioSrc = `data:${ttsJson.mimeType || 'audio/mp3'};base64,${ttsJson.audio}`;
+                  const audio = new Audio(audioSrc);
+                  audio.play().catch(() => {});
+                }
+              })
+              .catch(() => {});
+          }
+        } else {
+          throw new Error(data.error || 'Unknown error from server');
+        }
       }
     } catch (error) {
       console.error("Error sending message:", error);
@@ -620,7 +592,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       const errorMessage: Message = {
         id: Date.now().toString(),
         content:
-          "❌ Speech recognition is not supported in your browser. Please use Chrome, Safari, or Edge.",
+          "❌ Voice input is not supported in your browser.",
         sender: "assistant",
         timestamp: new Date(),
         type: "error",
@@ -629,44 +601,75 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       return;
     }
 
-    if (isListening) {
-      recognitionRef.current?.stop();
-    } else {
+    if (useMediaRecorderRef.current) {
+      if (isListening) {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
+        return;
+      }
       try {
-        // Request microphone permission first
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        
-        // Start recording with auto language detection
-        if (recognitionRef.current) {
-          recognitionRef.current.lang = "auto"; // Let browser auto-detect
-          recognitionRef.current.start();
-        }
-      } catch (error) {
-        console.error("Failed to start speech recognition:", error);
-
-        let errorMsg = "❌ Failed to start voice input.";
-        if (error instanceof Error) {
-          if (error.name === "NotAllowedError") {
-            errorMsg =
-              "❌ Microphone access denied. Please allow microphone access and try again.";
-          } else if (error.name === "NotFoundError") {
-            errorMsg =
-              "❌ No microphone found. Please connect a microphone and try again.";
-          } else {
-            errorMsg = `❌ Voice input error: ${error.message}`;
-          }
-        }
-
-        const errorMessage: Message = {
-          id: Date.now().toString(),
-          content: errorMsg,
-          sender: "assistant",
-          timestamp: new Date(),
-          type: "error",
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStreamRef.current = stream;
+        audioChunksRef.current = [];
+        const mediaRecorder = new (window as any).MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        mediaRecorder.onstart = () => {
+          setIsListening(true);
+          setRecordingTime(0);
+          recordingTimerRef.current = setInterval(() => {
+            setRecordingTime((prev) => {
+              if (prev >= 20) {
+                mediaRecorder.stop();
+                return 0;
+              }
+              return prev + 1;
+            });
+          }, 1000);
         };
+        mediaRecorder.ondataavailable = (e: BlobEvent) => {
+          if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
+        };
+        mediaRecorder.onstop = async () => {
+          try {
+            const blob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+            const formData = new FormData();
+            formData.append('audio', blob, 'recording.webm');
+            const sttRes = await fetch('/api/stt', { method: 'POST', body: formData });
+            const sttJson = await sttRes.json();
+            if (sttJson.success && typeof sttJson.text === 'string' && sttJson.text.trim()) {
+              const transcript = sttJson.text.trim();
+              // Send silently (don't show transcript)
+              setTimeout(() => { sendMessage(transcript); }, 0);
+            } else {
+              const errorMessage: Message = { id: Date.now().toString(), content: '❌ Could not transcribe audio. Please try again.', sender: 'assistant', timestamp: new Date(), type: 'error' };
+              setMessages((prev) => [...prev, errorMessage]);
+            }
+          } catch (error) {
+            const errorMessage: Message = { id: Date.now().toString(), content: `❌ Voice input error: ${error instanceof Error ? error.message : 'Unknown error'}`, sender: 'assistant', timestamp: new Date(), type: 'error' };
+            setMessages((prev) => [...prev, errorMessage]);
+          } finally {
+            setIsListening(false);
+            if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+            setRecordingTime(0);
+            if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach((t) => t.stop()); mediaStreamRef.current = null; }
+          }
+        };
+        mediaRecorder.start();
+      } catch (error) {
+        console.error('Failed to start voice input:', error);
+        let errorMsg = '❌ Failed to start voice input.';
+        if (error instanceof Error) {
+          if ((error as any).name === 'NotAllowedError') errorMsg = '❌ Microphone access denied. Please allow microphone access and try again.';
+          else if ((error as any).name === 'NotFoundError') errorMsg = '❌ No microphone found. Please connect a microphone and try again.';
+          else errorMsg = `❌ Voice input error: ${error.message}`;
+        }
+        const errorMessage: Message = { id: Date.now().toString(), content: errorMsg, sender: 'assistant', timestamp: new Date(), type: 'error' };
         setMessages((prev) => [...prev, errorMessage]);
       }
+      return;
     }
+    // No Web Speech fallback; Gemini STT only
   };
 
   const handleCSVImport = () => {
