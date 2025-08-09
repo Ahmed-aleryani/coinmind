@@ -16,12 +16,54 @@ const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 // Concise system prompt to reduce latency
 const SYSTEM_PROMPT = `You are CoinMind, a concise financial assistant.
 - Reply in the user's language.
-- Be brief. Prefer short sentences.
+- Default to concise answers. If the user asks for details or explanation, provide a more thorough answer.
 - Use user's default currency unless another is specified: {defaultCurrency}.
+- Total balance equals net cash flow (income - expenses).
 - If user logs a transaction, confirm and stop.
-- If user asks a financial question, answer directly with 1-3 bullet points.
+- If user asks a financial question, answer directly with 1-3 bullet points unless they request details.
 
 Snapshot: balance={balance}, income={income}, expenses={expenses}, txns={transactionCount}.`;
+
+// Lightweight detector for response length preference
+function detectLengthPreference(message: string): 'short' | 'long' | 'auto' {
+  const m = message.toLowerCase();
+  // English
+  const shortHints = [
+    'short', 'brief', 'tl;dr', 'summary', 'summarize', 'quick', 'one line', '1-3 bullets', 'bullets', 'concise'
+  ];
+  const longHints = [
+    'long', 'detailed', 'details', 'explain', 'explanation', 'deep', 'comprehensive', 'elaborate', 'why', 'how'
+  ];
+  // Arabic
+  const shortHintsAr = ['مختصر', 'باختصار', 'موجز', 'ملخص', 'سريع'];
+  const longHintsAr = ['تفصيلي', 'بالتفصيل', 'موسع', 'اشرح', 'شرح'];
+
+  if ([...shortHints, ...shortHintsAr].some(k => m.includes(k))) return 'short';
+  if ([...longHints, ...longHintsAr].some(k => m.includes(k))) return 'long';
+  return 'auto';
+}
+
+function maxTokensFor(pref: 'short' | 'long' | 'auto'): number {
+  if (pref === 'short') return 140;
+  if (pref === 'long') return 600;
+  return 200; // default
+}
+
+// Heuristic inference for transaction type when AI omits it
+function inferTransactionType(message: string): 'income' | 'expense' {
+  const m = message.toLowerCase();
+  // English hints
+  const incomeHints = ['salary', 'paycheck', 'income', 'deposit', 'received', 'bonus', 'refund', 'reimbursement'];
+  const expenseHints = ['spent', 'pay', 'paid', 'bought', 'buy', 'purchase', 'charge', 'charged', 'withdraw', 'withdrawal'];
+  // Arabic hints
+  const incomeHintsAr = ['راتب', 'دخل', 'ايداع', 'إيداع', 'حولت لي', 'حوّل لي', 'حوالة', 'مكافأة', 'استرجاع'];
+  const expenseHintsAr = ['دفعت', 'اشتريت', 'صرف', 'صرفتها', 'سحبت', 'تحويل خرج'];
+
+  if ([...incomeHints, ...incomeHintsAr].some(k => m.includes(k))) return 'income';
+  if ([...expenseHints, ...expenseHintsAr].some(k => m.includes(k))) return 'expense';
+  // Default to expense to be conservative
+  return 'expense';
+}
 
 // Helper function to determine if user is asking about their financial data using AI
 async function handleFinancialQueryWithLLM(message: string, userLanguage?: string): Promise<{ isFinancial: boolean; intent: string; response: string }> {
@@ -99,7 +141,9 @@ ${userLanguage ? `User language: ${userLanguage}` : ""}`;
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, type } = await request.json();
+    // Parse request body once (avoid multiple reads of body stream)
+    const payload = await request.json();
+    const { message, type } = payload as { message: string; type?: string };
     const url = new URL(request.url);
     const stream = url.searchParams.get('stream') === '1';
 
@@ -130,8 +174,8 @@ export async function POST(request: NextRequest) {
       try {
         logger.info("Processing CSV import request");
 
-        // Extract file information from request body
-        const { fileInfo, previousFile } = await request.json();
+        // Extract file information from already parsed payload
+        const { fileInfo, previousFile } = (payload as any) || {};
         
         // Extract spreadsheet data from message
         const csvMatch = message.match(/Please analyze and import this spreadsheet file data:\n\n([\s\S]*)/);
@@ -469,8 +513,7 @@ Your transactions have been added to your account. You can view them in the dash
             currency: parsedTransaction.currency,
             category: parsedTransaction.category || "Other",
             type:
-              parsedTransaction.type ||
-              (parsedTransaction.amount > 0 ? "income" : "expense"),
+              parsedTransaction.type || inferTransactionType(message),
             date: parsedTransaction.date, // Preserve the parsed date
             vendor: parsedTransaction.vendor,
           } as {
@@ -581,39 +624,11 @@ Your transactions have been added to your account. You can view them in the dash
         }
       }
 
-      // If no transaction was detected or added, use the regular AI response
-      if (!transactionAdded) {
-        // Use the system prompt for general responses
-        const prompt =
-          SYSTEM_PROMPT
-            .replace("{balance}", formattedBalance)
-            .replace("{income}", formattedIncome)
-            .replace("{expenses}", formattedExpenses)
-            .replace("{transactionCount}", (stats.transactionCount || 0).toString())
-            .replace("{defaultCurrency}", defaultCurrency) +
-          `
-
-User message: ${message}
-
-Remember: Respond in the same language as the user's message.`;
-
-        // Send chat request to Gemini (shorter max tokens for speed)
-        const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 200 } });
-        const response = await result.response;
-        responseText = response.text();
-
-        logger.info(
-          {
-            responseLength: responseText.length,
-          },
-          "Chat response generated successfully"
-        );
-      }
-
-      // Check if this is a financial query using AI-powered function calling
+      // If no transaction was added, first check if this is a financial query using AI-powered function calling
       if (!transactionAdded) {
         // Detect user's language first
         const detectedLanguage = detectLanguage(message);
+        const lengthPref = detectLengthPreference(message);
         
         // Determine if user is asking about their financial data using AI
         const queryAnalysis = await handleFinancialQueryWithLLM(message, detectedLanguage.code);
@@ -636,7 +651,8 @@ Remember: Respond in the same language as the user's message.`;
             return NextResponse.json({
               success: true,
               data: {
-                message: financialAnswer,
+                // If user asked for short, trim to a compact answer
+                message: lengthPref === 'short' ? financialAnswer.split('\n').slice(0, 6).join('\n') : financialAnswer,
                 transactionAdded: false,
               },
             });
@@ -650,6 +666,38 @@ Remember: Respond in the same language as the user's message.`;
             // Fall through to general AI response
           }
         }
+
+        // Not a financial query → generate a general response now
+        const lengthPrefTokens = maxTokensFor(lengthPref);
+        const lengthInstruction = lengthPref === 'short'
+          ? '\nKeep it brief: 1-3 short bullet points.\n'
+          : lengthPref === 'long'
+            ? '\nThe user wants details: provide a thorough but clear explanation.\n'
+            : '';
+
+        const prompt =
+          SYSTEM_PROMPT
+            .replace("{balance}", formattedBalance)
+            .replace("{income}", formattedIncome)
+            .replace("{expenses}", formattedExpenses)
+            .replace("{transactionCount}", (stats.transactionCount || 0).toString())
+            .replace("{defaultCurrency}", defaultCurrency) +
+          `
+
+User message: ${message}
+${lengthInstruction}
+Remember: Respond in the same language as the user's message.`;
+
+        const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: lengthPrefTokens } });
+        const response = await result.response;
+        responseText = response.text();
+
+        logger.info(
+          {
+            responseLength: responseText.length,
+          },
+          "Chat response generated successfully"
+        );
       }
 
       if (!stream) {
