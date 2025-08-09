@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { TransactionCategory } from "@/lib/types/transaction";
-import { parseTransactionText, parseCSVWithGemini, answerFinancialQuestion } from "@/lib/api/gemini";
+import { parseTransactionText, parseCSVWithGemini, answerFinancialQuestion, categorizeTransaction } from "@/lib/api/gemini";
 import logger from "@/lib/utils/logger";
 import { convertAmount } from "@/lib/utils/currency";
 import { CurrencyFormatter } from "@/lib/utils/currency-formatter";
@@ -508,11 +508,20 @@ Your transactions have been added to your account. You can view them in the dash
           parsedTransaction.amount !== undefined &&
           parsedTransaction.description
         ) {
+          // Fallback category classification if AI didn't provide one
+          let fallbackCategory: TransactionCategory | undefined = parsedTransaction.category as TransactionCategory | undefined;
+          if (!fallbackCategory) {
+            try {
+              fallbackCategory = await categorizeTransaction(parsedTransaction.description, parsedTransaction.vendor);
+            } catch {
+              fallbackCategory = 'Other';
+            }
+          }
           transactionInfo = {
             description: parsedTransaction.description,
             amount: parsedTransaction.amount,
             currency: parsedTransaction.currency,
-            category: parsedTransaction.category || "Other",
+            category: fallbackCategory || "Other",
             type:
               parsedTransaction.type || inferTransactionType(message),
             date: parsedTransaction.date, // Preserve the parsed date
@@ -601,10 +610,16 @@ Your transactions have been added to your account. You can view them in the dash
             transactionCurrency
           );
           const lang = detectLanguage(message).code;
+          const categoryLabel = transactionInfo.category || 'Other';
+          const hasVendor = Boolean(transactionInfo.vendor && transactionInfo.vendor !== 'Unknown');
           if (lang === 'ar') {
-            responseText = `✅ تم حفظ المعاملة بنجاح! **${originalAmountStr}** لدى ${transactionInfo.vendor || 'غير معروف'}.`;
+            responseText = hasVendor
+              ? `✅ تم حفظ المعاملة بنجاح! **${originalAmountStr}** لدى ${transactionInfo.vendor}. الفئة: ${categoryLabel}.`
+              : `✅ تم حفظ المعاملة بنجاح! **${originalAmountStr}**. الفئة: ${categoryLabel}.`;
           } else {
-            responseText = `✅ Added transaction successfully! **${originalAmountStr}** at ${transactionInfo.vendor || 'Unknown'}.`;
+            responseText = hasVendor
+              ? `✅ Added transaction successfully! **${originalAmountStr}** at ${transactionInfo.vendor}. Category: ${categoryLabel}.`
+              : `✅ Added transaction successfully! **${originalAmountStr}**. Category: ${categoryLabel}.`;
           }
         } catch (transactionError) {
           logger.error(
