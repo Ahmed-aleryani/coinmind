@@ -1299,8 +1299,7 @@ export default function Transactions() {
                       const sttRes = await fetch('/api/stt', { method: 'POST', body: fd });
                       const sttJson = await sttRes.json();
                       if (sttJson.success && typeof sttJson.text === 'string' && sttJson.text.trim()) {
-                        setQuickInput(sttJson.text.trim());
-                        // Auto-send after transcription
+                        // Auto-send after transcription (do not write into textbox)
                         await handleQuickSend(sttJson.text.trim());
                       } else {
                         toast.error('Could not transcribe audio');
