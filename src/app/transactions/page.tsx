@@ -221,6 +221,13 @@ export default function Transactions() {
     setGroupedTransactions(grouped);
   }, [filteredTransactions]);
 
+  // Expand all date groups by default for easier scanning
+  useEffect(() => {
+    if (groupedTransactions.length > 0 && expandedDates.size === 0) {
+      setExpandedDates(new Set(groupedTransactions.map((g) => g.date)));
+    }
+  }, [groupedTransactions, expandedDates]);
+
   // Filter transactions based on search and filters
   useEffect(() => {
     let filtered = transactions;
@@ -570,18 +577,18 @@ export default function Transactions() {
           const isLastGroup = groupIndex === groupedTransactions.length - 1;
           
           return (
-            <Card key={group.date} className="overflow-hidden">
+            <div key={group.date} className="overflow-hidden rounded-md">
               {/* Date Header with Total */}
               <div 
-                className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+                className="flex items-center justify-between p-3 cursor-pointer bg-muted/70 hover:bg-muted/80 transition-colors border border-border rounded-md"
                 onClick={() => toggleDateExpansion(group.date)}
               >
                 <div className="flex items-center gap-4">
                   <div>
-                    <h3 className="font-semibold text-lg">
+                    <h3 className="font-semibold text-base">
                       {formatDate(new Date(group.date), "long")}
                     </h3>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {group.transactions.length} transaction{group.transactions.length !== 1 ? 's' : ''}
                     </p>
                   </div>
@@ -589,13 +596,13 @@ export default function Transactions() {
                 
                 <div className="flex items-center gap-3">
                   <div className="text-right">
-                    <div className={`text-lg font-bold ${
+                    <div className={`text-base font-bold ${
                       group.totalAmount >= 0 ? 'text-green-600' : 'text-red-600'
                     }`}>
                       {group.totalAmount >= 0 ? '+' : ''}{formatCurrency(group.totalAmount, { currency: defaultCurrency })}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      Daily Total
+                    <div className="text-[10px] text-muted-foreground">
+                      Daily total
                     </div>
                   </div>
                   
@@ -611,24 +618,26 @@ export default function Transactions() {
 
               {/* Transactions for this date */}
               {isExpanded && (
-                <div className="border-t">
-                  <div className="p-4 space-y-3">
+                <div>
+                  <div className="p-1 divide-y divide-border/50">
                     {group.transactions.map((transaction) => (
                       <div
                         key={transaction.id}
-                        className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors"
+                        className="flex items-center justify-between px-3 py-2 hover:bg-accent/5 transition-colors"
                       >
                         <div className="flex items-center gap-3 flex-1">
-                          <div className="w-10 h-10 bg-background rounded-full flex items-center justify-center border">
-                            <span className="text-lg">{getCategoryEmoji(transaction.category)}</span>
+                          <div className="w-8 h-8 bg-background rounded-full flex items-center justify-center border">
+                            <span className="text-base">{getCategoryEmoji(transaction.category)}</span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm">
-                              {transaction.category}
+                            <div className="font-medium text-sm truncate">
+                              {transaction.category}{transaction.vendor ? ` · ${transaction.vendor}` : ''}
                             </div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {transaction.description}
-                            </div>
+                            {transaction.description && (
+                              <div className="text-xs text-muted-foreground truncate">
+                                {transaction.description}
+                              </div>
+                            )}
                             {transaction.originalAmount && transaction.originalCurrency && (
                               <div className="text-xs text-muted-foreground">
                                 {formatCurrency(
@@ -642,7 +651,7 @@ export default function Transactions() {
                         
                         <div className="flex items-center gap-2">
                           <div className="text-right">
-                            <div className={`font-bold text-sm ${
+                            <div className={`font-semibold text-sm ${
                               transaction.type === "income" ? "text-green-600" : "text-red-600"
                             }`}>
                               {transaction.type === "income" ? "+" : "-"}
@@ -679,12 +688,12 @@ export default function Transactions() {
                   </div>
                 </div>
               )}
-
+              
               {/* Infinite scroll trigger */}
               {isLastGroup && hasMore && (
                 <div ref={lastTransactionElementRef} className="h-4" />
               )}
-            </Card>
+            </div>
           );
         })}
 
