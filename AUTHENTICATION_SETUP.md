@@ -32,6 +32,7 @@ Make sure you have these environment variables set in your `.env.local`:
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+NEXT_PUBLIC_APP_BASE_URL=http://localhost:3000
 ```
 
 ## Supabase Configuration
@@ -57,6 +58,10 @@ For Google:
 1. Create a Google OAuth app
 2. Set redirect URL to: `https://your-project.supabase.co/auth/v1/callback`
 3. Add client ID and secret to Supabase
+
+Also in Supabase Authentication settings:
+- Set Site URL to the same value as `NEXT_PUBLIC_APP_BASE_URL` (e.g., `http://localhost:3000` in dev)
+- Add `${NEXT_PUBLIC_APP_BASE_URL}/auth/callback` to the list of Additional Redirect URLs
 
 ### 3. Email Templates (Optional)
 
