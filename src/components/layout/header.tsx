@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, Moon, Sun, User, LogOut, LogIn, List, Eye, EyeOff, Mail, Lock, User as UserIcon } from "lucide-react";
+import { Menu, Sun, User, LogOut, LogIn, List, Eye, EyeOff, Mail, Lock, User as UserIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -15,6 +15,11 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -41,8 +46,8 @@ const navigation = [
 export function Header() {
   const { theme, setTheme } = useTheme();
   const pathname = usePathname();
-  const { defaultCurrency, supportedCurrencies, isCurrencyLoading, setDefaultCurrency } = useCurrency();
-  const { user, loading, signOut, isAnonymous, signInAnonymously } = useAuth();
+  const { defaultCurrency, supportedCurrencies, setDefaultCurrency } = useCurrency();
+  const { user, loading, signOut, isAnonymous } = useAuth();
   const router = useRouter();
   
   // Modal states
@@ -68,8 +73,7 @@ export function Header() {
   const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
 
 
-  const handleCurrencyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newCurrency = e.target.value;
+  const handleCurrencyChangeDirect = async (newCurrency: string) => {
     await setDefaultCurrency(newCurrency);
   };
 
@@ -198,54 +202,56 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
         
-        {/* Mobile Menu Button */}
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden h-9 w-9 mr-3"
-            >
-              <Menu className="h-5 w-5" />
-              <span className="sr-only">Toggle Menu</span>
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-80 sm:w-96">
-            {/* Mobile Sheet Header */}
-            <div className="flex items-center space-x-3 mb-8">
-              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-8 h-8" />
-              <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
-                Coinmind
-              </span>
-            </div>
-            
-            {/* Mobile Navigation */}
-            <nav className="flex flex-col space-y-2">
-              {navigation.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-accent hover:text-accent-foreground ${
-                    pathname === item.href
-                      ? "bg-accent text-accent-foreground shadow-sm"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  <span className="mr-3 text-lg">{item.icon}</span>
-                  {item.name}
-                </Link>
-              ))}
-            </nav>
-            
-            {/* Mobile Footer */}
-            <div className="absolute bottom-6 left-6 right-6">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>© 2024 Coinmind</span>
-                <span>v1.0.0</span>
+        {/* Mobile Menu Button - only when signed in */}
+        {user && (
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden h-9 w-9 mr-3"
+              >
+                <Menu className="h-5 w-5" />
+                <span className="sr-only">Toggle Menu</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-80 sm:w-96">
+              {/* Mobile Sheet Header */}
+              <div className="flex items-center space-x-3 mb-8">
+                <img src="/coinmind-logo.svg" alt="Coinmind" className="w-8 h-8" />
+                <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+                  Coinmind
+                </span>
               </div>
-            </div>
-          </SheetContent>
-        </Sheet>
+              
+              {/* Mobile Navigation */}
+              <nav className="flex flex-col space-y-2">
+                {navigation.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-accent hover:text-accent-foreground ${
+                      pathname === item.href
+                        ? "bg-accent text-accent-foreground shadow-sm"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    <span className="mr-3 text-lg">{item.icon}</span>
+                    {item.name}
+                  </Link>
+                ))}
+              </nav>
+              
+              {/* Mobile Footer */}
+              <div className="absolute bottom-6 left-6 right-6">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>© 2024 Coinmind</span>
+                  <span>v1.0.0</span>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
 
         {/* Desktop Logo and Navigation - Hidden on Mobile */}
         <div className="hidden md:flex items-center">
@@ -256,23 +262,25 @@ export function Header() {
             </span>
           </Link>
           
-          {/* Desktop Navigation */}
-          <nav className="flex items-center space-x-1">
-            {navigation.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 hover:bg-accent hover:text-accent-foreground ${
-                  pathname === item.href
-                    ? "bg-accent text-accent-foreground shadow-sm"
-                    : "text-muted-foreground"
-                }`}
-              >
-                <span className="mr-2">{item.icon}</span>
-                {item.name}
-              </Link>
-            ))}
-          </nav>
+          {/* Desktop Navigation - only when signed in */}
+          {user && (
+            <nav className="flex items-center space-x-1">
+              {navigation.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 hover:bg-accent hover:text-accent-foreground ${
+                    pathname === item.href
+                      ? "bg-accent text-accent-foreground shadow-sm"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  <span className="mr-2">{item.icon}</span>
+                  {item.name}
+                </Link>
+              ))}
+            </nav>
+          )}
         </div>
 
         {/* Mobile Logo (centered) - Only visible on mobile */}
@@ -287,30 +295,6 @@ export function Header() {
 
         {/* Right side actions */}
         <div className="flex items-center space-x-2 ml-auto">
-          {/* Currency Selector */}
-          <select
-            value={defaultCurrency || 'USD'}
-            onChange={handleCurrencyChange}
-            className="border rounded px-2 py-1 text-xs bg-background text-foreground"
-            disabled={isCurrencyLoading}
-          >
-            {(supportedCurrencies.length > 0 ? supportedCurrencies : ['USD']).map(cur => (
-              <option key={cur} value={cur}>{cur}</option>
-            ))}
-          </select>
-          
-          {/* Theme Toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-            className="h-9 w-9"
-          >
-            <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-            <span className="sr-only">Toggle theme</span>
-          </Button>
-
           {/* Auth Controls */}
           {!loading && (
             <>
@@ -326,7 +310,7 @@ export function Header() {
                       </Avatar>
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <DropdownMenuContent className="w-64" align="end" forceMount>
                     <DropdownMenuLabel className="font-normal">
                       <div className="flex flex-col space-y-1">
                         <div className="flex items-center gap-2">
@@ -344,6 +328,44 @@ export function Header() {
                         </p>
                       </div>
                     </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Preferences</DropdownMenuLabel>
+                    {/* Appearance selection */}
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <Sun className="mr-2 h-4 w-4" />
+                        <span>Appearance</span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-48">
+                        <DropdownMenuRadioGroup
+                          value={(theme as string) || 'system'}
+                          onValueChange={(value) => setTheme(value)}
+                        >
+                          <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
+                          <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
+                          <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    {/* Currency selection */}
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <span className="mr-2">Currency</span>
+                        <Badge variant="secondary">{defaultCurrency || 'USD'}</Badge>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-48 max-h-64 overflow-y-auto">
+                        <DropdownMenuRadioGroup
+                          value={defaultCurrency || 'USD'}
+                          onValueChange={(value) => handleCurrencyChangeDirect(value)}
+                        >
+                          {(supportedCurrencies.length > 0 ? supportedCurrencies : ['USD']).map((cur) => (
+                            <DropdownMenuRadioItem key={cur} value={cur}>
+                              {cur}
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                       <Link href="/dashboard">
