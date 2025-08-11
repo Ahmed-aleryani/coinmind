@@ -897,7 +897,11 @@ export default function Transactions() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-sm truncate">
-                              {transaction.category}{transaction.vendor ? ` · ${transaction.vendor}` : ''}
+                              {transaction.category}
+                              {(() => {
+                                const v = (transaction.vendor || '').trim();
+                                return v && v.toLowerCase() !== 'unknown' ? ` · ${v}` : '';
+                              })()}
                             </div>
                             {transaction.description && (
                               <div className="text-xs text-muted-foreground truncate">
