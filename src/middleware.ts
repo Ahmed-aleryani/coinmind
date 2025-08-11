@@ -35,6 +35,19 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  // If Supabase returned with a code at the root (e.g., https://domain.com/?code=...)
+  // normalize by redirecting to our /auth/callback route which exchanges the code for a session.
+  const code = request.nextUrl.searchParams.get('code')
+  if (code && request.nextUrl.pathname === '/') {
+    const url = request.nextUrl
+    // Preserve any next or redirectTo hints if they already exist
+    const nextParam = url.searchParams.get('next') || url.searchParams.get('redirectTo') || '/dashboard'
+    const callback = new URL('/auth/callback', url)
+    callback.searchParams.set('code', code)
+    callback.searchParams.set('next', nextParam)
+    return NextResponse.redirect(callback)
+  }
+
   // Define protected routes that require authentication (either real or anonymous)
   const protectedRoutes = ['/dashboard', '/transactions']
   const isProtectedRoute = protectedRoutes.some(route => 

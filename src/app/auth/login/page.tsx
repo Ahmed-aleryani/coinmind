@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabaseClient } from "@/lib/auth-client"
+import { getAppBaseUrl } from "@/lib/utils"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Mail, Lock, Github, Chrome } from "lucide-react"
 import Link from "next/link"
@@ -51,7 +52,7 @@ function LoginForm() {
       const { error } = await supabaseClient.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${process.env.NEXT_PUBLIC_APP_BASE_URL!}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
+          redirectTo: `${getAppBaseUrl()}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
         },
       })
 
