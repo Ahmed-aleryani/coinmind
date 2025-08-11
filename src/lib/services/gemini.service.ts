@@ -49,9 +49,9 @@ export interface ReceiptData {
 export class GeminiService {
   private aiClient: GoogleGenAI;
   private readonly MODEL_NAMES = {
-    FLASH: 'gemini-2.5-flash',
+    FLASH: 'gemini-2.5-flash-lite',
     PRO: 'gemini-2.5-pro-preview-06-05',
-    GEMINI_2_5_FLASH_LITE:"gemini-2.5-flash-lite"
+    GEMINI_2_5_FLASH_LITE:'gemini-2.5-flash-lite'
   };
   private dbFunctions: DatabaseFunctions;
 
@@ -473,7 +473,7 @@ Function Results:
 ${functionResults.map(r => `${r.name}: ${r.error ? `Error: ${r.error}` : JSON.stringify(r.result, null, 2)}`).join('\n\n')}
 
 **RESPONSE REQUIREMENTS:**
-1. **Be Comprehensive**: Analyze all the data and provide deep insights
+1. Default to concise answers. If the user's question explicitly asks for details/explanations, provide a more thorough answer.
 2. **Be Specific**: Use exact numbers and percentages when available
 3. **Be Actionable**: Provide practical advice and recommendations
 4. **Be Conversational**: Use natural, friendly language in ${userLanguage}

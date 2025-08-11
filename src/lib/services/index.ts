@@ -55,15 +55,26 @@ export class ServiceFactory {
 }
 
 // Helper function to get services with user context
-export async function getServices() {
-  const userId = await getUserId();
+export async function getServices(userIdOverride?: string) {
+  const userId = userIdOverride || (await getUserId());
   const services = ServiceFactory.getInstance();
   
-  // Ensure default currencies exist first
-  await services.repositories.currencies.ensureDefaultCurrencies();
+  // One-time ensure for currencies per process
+  if (!(global as any).__cm_currenciesEnsured) {
+    await services.repositories.currencies.ensureDefaultCurrencies();
+    (global as any).__cm_currenciesEnsured = true;
+  }
   
-  // Ensure user profile exists with default currency
-  const profile = await services.repositories.profiles.ensureExists(userId, 'USD');
+  // Ensure user profile exists (cache per user for process lifetime)
+  const ensuredProfiles: Set<string> = (global as any).__cm_ensuredProfiles || new Set<string>();
+  let profile;
+  if (!ensuredProfiles.has(userId)) {
+    profile = await services.repositories.profiles.ensureExists(userId, 'USD');
+    ensuredProfiles.add(userId);
+    (global as any).__cm_ensuredProfiles = ensuredProfiles;
+  } else {
+    profile = await services.repositories.profiles.findById(userId);
+  }
   
   return {
     services,

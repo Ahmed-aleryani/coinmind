@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react"
 import { User } from "@supabase/supabase-js"
 import { supabaseClient } from "@/lib/auth-client"
+import Cookies from "js-cookie"
 
 interface AuthContextType {
   user: User | null
@@ -27,6 +28,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data: { session } } = await supabaseClient.auth.getSession()
         setUser(session?.user ?? null)
+        const uid = session?.user?.id
+        if (uid) {
+          Cookies.set("cm_uid", uid, { expires: 7, sameSite: "lax" })
+        } else {
+          Cookies.remove("cm_uid")
+        }
       } catch (error) {
         console.error("Error getting initial session:", error)
       } finally {
@@ -41,6 +48,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         setUser(session?.user ?? null)
         setLoading(false)
+
+        // Persist user id in cookie for server routes to read
+        const userId = session?.user?.id
+        if (userId) {
+          Cookies.set("cm_uid", userId, { expires: 7, sameSite: "lax" })
+        } else {
+          Cookies.remove("cm_uid")
+        }
       }
     )
 

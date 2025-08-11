@@ -292,15 +292,15 @@ export default function DashboardPage() {
     setCategoryStats(categoryStatsArray);
   }, [filteredTransactions]);
 
-  // Fetch data on mount and when currency changes
+  // Fetch data on mount and when currency or selected period changes
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        logger.info({ defaultCurrency }, "Fetching dashboard data");
+        logger.info({ defaultCurrency, timePeriod, hasCustomRange: Boolean(customDateRange?.from && customDateRange?.to) }, "Fetching dashboard data");
 
         const response = await fetch(
-          `/api/transactions?currency=${defaultCurrency}&t=${Date.now()}`
+          `/api/transactions?currency=${defaultCurrency}&limit=1000&offset=0&t=${Date.now()}`
         );
         const data = await response.json();
 
@@ -338,7 +338,7 @@ export default function DashboardPage() {
     if (defaultCurrency) {
       fetchData();
     }
-  }, [defaultCurrency]);
+  }, [defaultCurrency, timePeriod, customDateRange]);
 
   // Get date range based on selected time period
   const getDateRange = useCallback(() => {

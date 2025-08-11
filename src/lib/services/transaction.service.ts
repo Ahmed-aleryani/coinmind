@@ -343,15 +343,42 @@ export class TransactionService {
       'Entertainment': 'Entertainment',
       'Education': 'Education',
       'Other': 'Other Expenses',
+      'Misc': 'Other Expenses',
+      'Miscellaneous': 'Other Expenses',
+      'General': 'Other Expenses',
+      'Unknown': 'Other Expenses',
+      'Uncategorized': 'Other Expenses',
       'Expenses': 'Other Expenses',
       'Income': 'Other Income',
       'Salary': 'Salary',
       'Business': 'Business',
       'Investment': 'Investment',
       'Gift': 'Gift',
+      // Arabic common mappings
+      'الطعام والشراب': 'Food & Dining',
+      'بقالة': 'Food & Dining',
+      'مطعم': 'Food & Dining',
+      'المواصلات': 'Transportation',
+      'السفر': 'Travel',
+      'الصحة': 'Healthcare',
+      'التسوق': 'Shopping',
+      'الترفيه': 'Entertainment',
+      'التعليم': 'Education',
+      'أخرى': 'Other Expenses',
+      'غير معروف': 'Other Expenses',
     };
 
-    return categoryMap[aiCategory] || aiCategory;
+    const normalized = (aiCategory || '').trim();
+    if (!normalized) return 'Other Expenses';
+
+    // Try direct match first
+    if (categoryMap[normalized]) return categoryMap[normalized];
+
+    // Case-insensitive match
+    const match = Object.keys(categoryMap).find(k => k.toLowerCase() === normalized.toLowerCase());
+    if (match) return categoryMap[match];
+
+    return normalized;
   }
 
   private async findOrCreateCategory(userId: string, categoryName: string, type: 'income' | 'expense'): Promise<Category> {
