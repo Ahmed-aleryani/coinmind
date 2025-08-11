@@ -39,10 +39,10 @@ export async function parseReceiptImage(imageBase64: string): Promise<ReceiptDat
 /**
  * Categorize a transaction automatically
  */
-export async function categorizeTransaction(
+export function categorizeTransaction(
   description: string, 
   vendor?: string
-): Promise<TransactionCategory> {
+): TransactionCategory {
   // Simple categorization logic based on keywords
   const lower = description.toLowerCase();
   const vendorLower = vendor?.toLowerCase() || '';
