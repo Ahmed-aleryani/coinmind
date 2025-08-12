@@ -3,7 +3,6 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/components/providers/auth-provider"
-import { ChatInterface } from "@/components/chat/chat-interface"
 import { ArrowRight, Sparkles, Shield, Zap } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -53,10 +52,10 @@ export default function Home() {
     setIsSigningIn(true)
     try {
       await signInAnonymously()
-      router.push('/')
+      router.push('/transactions')
     } catch (error) {
       console.error('Guest sign-in failed:', error)
-      router.push('/')
+      router.push('/transactions')
     } finally {
       setIsSigningIn(false)
     }
@@ -160,7 +159,7 @@ export default function Home() {
       const { error } = await supabaseClient.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/`,
+          redirectTo: `${window.location.origin}/auth/callback?next=/transactions`,
         },
       });
 
@@ -172,11 +171,12 @@ export default function Home() {
     }
   }
 
-  // If user is authenticated, show the chat interface
+  // If user is authenticated, redirect to transactions as main page
   if (user && !loading) {
+    router.replace('/transactions')
     return (
-      <div className="h-[calc(100vh-8rem)]">
-        <ChatInterface />
+      <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
+        <div className="text-muted-foreground text-sm">Redirecting…</div>
       </div>
     )
   }
