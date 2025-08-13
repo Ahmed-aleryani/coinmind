@@ -22,8 +22,21 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+function getMetadataBase(): URL | undefined {
+  const raw = process.env.NEXT_PUBLIC_APP_BASE_URL;
+  if (!raw || raw.length === 0) {
+    return new URL("https://www.coinmind-ai.com");
+  }
+  try {
+    const value = raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://${raw}`;
+    return new URL(value);
+  } catch {
+    return new URL("https://www.coinmind-ai.com");
+  }
+}
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_BASE_URL || "https://www.coinmind-ai.com"),
+  metadataBase: getMetadataBase(),
   title: "AI-Powered Personal Finance Tracker",
   description: "Track your finances with natural language. Chat your way to better financial health.",
   keywords: [
