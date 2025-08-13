@@ -53,10 +53,10 @@ export default function Home() {
     setIsSigningIn(true)
     try {
       await signInAnonymously()
-      router.push('/transactions')
+      // Stay on home; chat will render when auth state updates
     } catch (error) {
       console.error('Guest sign-in failed:', error)
-      router.push('/transactions')
+      // Remain on the page even on failure
     } finally {
       setIsSigningIn(false)
     }
@@ -160,7 +160,8 @@ export default function Home() {
       const { error } = await supabaseClient.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/transactions`,
+          // Return to home; chat shows once user is authenticated
+          redirectTo: `${window.location.origin}/auth/callback?next=/`,
         },
       });
 
