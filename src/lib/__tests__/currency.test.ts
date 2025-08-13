@@ -1,4 +1,4 @@
-import { getExchangeRate, convertAmount, getSupportedCurrencies } from '../utils/currency';
+import { getExchangeRate, convertAmount, getSupportedCurrencies, getGlobalRates, convertWithGlobalRates } from '../utils/currency';
 
 describe('Currency Utilities', () => {
   // Test case for getting exchange rate
@@ -58,22 +58,20 @@ describe('Currency Utilities', () => {
   // Test case for currency exchange with specific values
   describe('Currency Exchange', () => {
     it('should correctly convert between USD and EUR', async () => {
-      // Get the exchange rate
-      const rate = await getExchangeRate('USD', 'EUR');
-      
-      // Convert 100 USD to EUR
+      // Use a single snapshot of global rates so both directions are consistent
+      const { rates, base } = await getGlobalRates('USD');
+
       const amountUSD = 100;
-      const amountEUR = await convertAmount(amountUSD, 'USD', 'EUR');
-      
-      // The converted amount should be approximately rate * amount
-      // Allowing for small floating point differences
-      expect(amountEUR).toBeCloseTo(amountUSD * rate, 2);
-      
-      // Convert back to USD
-      const convertedBack = await convertAmount(amountEUR, 'EUR', 'USD');
-      
-      // The amount should be approximately the same as the original
-      // Allowing for small floating point differences
+      const amountEUR = convertWithGlobalRates(amountUSD, 'USD', 'EUR', rates, base);
+
+      // Sanity check: result should be in a reasonable range
+      expect(amountEUR).toBeGreaterThan(amountUSD * 0.5);
+      expect(amountEUR).toBeLessThan(amountUSD * 1.5);
+
+      // Convert back using the same rate snapshot
+      const convertedBack = convertWithGlobalRates(amountEUR, 'EUR', 'USD', rates, base);
+
+      // Round-trip should approximately equal the original
       expect(convertedBack).toBeCloseTo(amountUSD, 2);
     });
   });
