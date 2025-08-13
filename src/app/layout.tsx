@@ -7,6 +7,8 @@ import { AuthProvider } from "@/components/providers/auth-provider";
 import { Header } from "@/components/layout/header";
 import { Navigation } from "@/components/layout/navigation";
 import { Toaster } from "@/components/ui/sonner";
+import { HotjarProvider } from "@/components/providers/hotjar-provider";
+import { BetaBanner } from "@/components/ui/beta-banner";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -51,6 +53,8 @@ export default function RootLayout({
           <AuthProvider>
             <CurrencyProvider>
               <div className="relative flex min-h-screen flex-col">
+                <HotjarProvider />
+                <BetaBanner />
                 <Header />
                 <main className="flex-1 pb-16 md:pb-0">
                   {children}
