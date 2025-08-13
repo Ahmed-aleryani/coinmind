@@ -115,7 +115,7 @@ function MessageList({
 }: MessageListProps) {
   return (
     <ScrollArea ref={scrollAreaRef} className="flex-1 p-3 sm:p-4 min-h-0">
-      <div className="space-y-4 max-w-4xl mx-auto pb-24">
+      <div className="space-y-4 max-w-4xl mx-auto pb-40 md:pb-28">
         {messages.map((msg) => (
           <MessageItem
             key={msg.id}
