@@ -3,14 +3,26 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+// No cookies: rely on localStorage with 24h TTL to avoid issues when cookies are blocked
 
 export function BetaBanner() {
   const [hidden, setHidden] = useState(true);
 
   useEffect(() => {
     try {
-      const dismissed = typeof window !== "undefined" && window.localStorage.getItem("cm_beta_banner_dismissed");
-      setHidden(!!dismissed);
+      if (typeof window !== "undefined") {
+        const until = window.localStorage.getItem("cm_beta_banner_dismissed_until");
+        if (until) {
+          const expiresAt = Number(until);
+          if (!Number.isNaN(expiresAt) && Date.now() < expiresAt) {
+            setHidden(true);
+            return;
+          }
+          // Expired: clean it up
+          window.localStorage.removeItem("cm_beta_banner_dismissed_until");
+        }
+      }
+      setHidden(false);
     } catch {
       setHidden(false);
     }
@@ -18,7 +30,11 @@ export function BetaBanner() {
 
   const dismiss = () => {
     try {
-      window.localStorage.setItem("cm_beta_banner_dismissed", "1");
+      if (typeof window !== "undefined") {
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+        const expiresAt = Date.now() + twentyFourHours;
+        window.localStorage.setItem("cm_beta_banner_dismissed_until", String(expiresAt));
+      }
     } catch {}
     setHidden(true);
   };
