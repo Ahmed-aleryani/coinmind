@@ -171,8 +171,6 @@ export default function Home() {
     }
   }
 
-  // Removed auto-redirect logic; Home remains accessible even when authenticated
-
   // Show welcome screen for guests
   return (
     <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center bg-background p-4">
