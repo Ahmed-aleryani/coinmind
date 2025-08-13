@@ -6,7 +6,7 @@ import { useAuth } from "@/components/providers/auth-provider"
 import { ArrowRight, Sparkles, Shield, Zap } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -172,8 +172,13 @@ export default function Home() {
   }
 
   // If user is authenticated, redirect to transactions as main page
+  useEffect(() => {
+    if (user && !loading) {
+      router.replace('/transactions')
+    }
+  }, [user, loading, router])
+
   if (user && !loading) {
-    router.replace('/transactions')
     return (
       <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
         <div className="text-muted-foreground text-sm">Redirecting…</div>
