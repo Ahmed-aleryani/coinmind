@@ -268,10 +268,12 @@ export default function Home() {
             </Link>
           </p>
         </div>
-        {/* Embedded Chat */}
-        <div className="mt-12 border rounded-lg">
-          <ChatInterface className="h-[520px]" />
-        </div>
+        {/* Embedded Chat for signed-in users only */}
+        {user && !loading && (
+          <div className="mt-12 border rounded-lg">
+            <ChatInterface className="h-[520px]" />
+          </div>
+        )}
       </div>
 
       {/* Login Modal */}
