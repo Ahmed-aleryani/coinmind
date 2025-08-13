@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, Sun, User, LogOut, LogIn, List, Eye, EyeOff, Mail, Lock, User as UserIcon } from "lucide-react";
+import { Menu, Sun, User, LogOut, LogIn, List } from "lucide-react";
 import { ModeToggle } from "@/components/ui/mode-toggle";
 import { useTheme } from "next-themes";
 import Link from "next/link";
@@ -24,6 +24,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+
+import { useState } from "react";
+import { supabaseClient } from "@/lib/auth-client";
+import { getAppBaseUrl } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -34,10 +39,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-
-import { useState } from "react";
-import { supabaseClient } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
+import { Eye, EyeOff, Mail, Lock, User as UserIcon } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: "📊" },
@@ -54,24 +56,6 @@ export function Header() {
   // Modal states
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isSignupOpen, setIsSignupOpen] = useState(false);
-  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [signupEmail, setSignupEmail] = useState("");
-  const [signupPassword, setSignupPassword] = useState("");
-  const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
-  const [signupFullName, setSignupFullName] = useState("");
-  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [signupLoading, setSignupLoading] = useState(false);
-  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [signupError, setSignupError] = useState<string | null>(null);
-  const [signupMessage, setSignupMessage] = useState<string | null>(null);
-  const [forgotPasswordMessage, setForgotPasswordMessage] = useState<string | null>(null);
-  const [showLoginPassword, setShowLoginPassword] = useState(false);
-  const [showSignupPassword, setShowSignupPassword] = useState(false);
-  const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
 
 
   const handleCurrencyChangeDirect = async (newCurrency: string) => {
@@ -87,105 +71,18 @@ export function Header() {
     return email.substring(0, 2).toUpperCase();
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginLoading(true);
-    setLoginError(null);
+  // Removed custom email/password login handler
 
-    try {
-      const { error } = await supabaseClient.auth.signInWithPassword({
-        email: loginEmail,
-        password: loginPassword,
-      });
+  // Removed custom email/password signup handler
 
-      if (error) {
-        setLoginError(error.message);
-      } else {
-        setIsLoginOpen(false);
-        setLoginEmail("");
-        setLoginPassword("");
-      }
-    } catch {
-      setLoginError("An unexpected error occurred");
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSignupLoading(true);
-    setSignupError(null);
-    setSignupMessage(null);
-
-    if (signupPassword !== signupConfirmPassword) {
-      setSignupError("Passwords do not match");
-      setSignupLoading(false);
-      return;
-    }
-
-    if (signupPassword.length < 6) {
-      setSignupError("Password must be at least 6 characters long");
-      setSignupLoading(false);
-      return;
-    }
-
-    try {
-      const { error } = await supabaseClient.auth.signUp({
-        email: signupEmail,
-        password: signupPassword,
-        options: {
-          data: {
-            full_name: signupFullName,
-          },
-        },
-      });
-
-      if (error) {
-        setSignupError(error.message);
-      } else {
-        setSignupMessage("Check your email for the confirmation link!");
-        setSignupEmail("");
-        setSignupPassword("");
-        setSignupConfirmPassword("");
-        setSignupFullName("");
-      }
-    } catch {
-      setSignupError("An unexpected error occurred");
-    } finally {
-      setSignupLoading(false);
-    }
-  };
-
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setForgotPasswordLoading(true);
-    setForgotPasswordMessage(null);
-
-    try {
-      const { error } = await supabaseClient.auth.resetPasswordForEmail(forgotPasswordEmail, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
-      });
-
-      if (error) {
-        setForgotPasswordMessage(`Error: ${error.message}`);
-      } else {
-        setForgotPasswordMessage("Check your email for the password reset link!");
-        setForgotPasswordEmail("");
-      }
-    } catch {
-      setForgotPasswordMessage("An unexpected error occurred");
-    } finally {
-      setForgotPasswordLoading(false);
-    }
-  };
+  // Removed custom forgot password handler
 
   const handleOAuthSignIn = async (provider: 'google' | 'github' | 'apple') => {
     try {
       const { error } = await supabaseClient.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/`,
+          redirectTo: `${getAppBaseUrl()}/auth/callback?next=/`,
         },
       });
 
@@ -384,13 +281,17 @@ export function Header() {
                     <DropdownMenuSeparator />
                     {isAnonymous && (
                       <>
-                        <DropdownMenuItem onClick={() => setIsSignupOpen(true)}>
-                          <User className="mr-2 h-4 w-4" />
-                          <span>Create Account</span>
+                        <DropdownMenuItem asChild>
+                          <Link href="/auth/signup">
+                            <User className="mr-2 h-4 w-4" />
+                            <span>Create Account</span>
+                          </Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setIsLoginOpen(true)}>
-                          <LogIn className="mr-2 h-4 w-4" />
-                          <span>Sign In</span>
+                        <DropdownMenuItem asChild>
+                          <Link href="/auth/login">
+                            <LogIn className="mr-2 h-4 w-4" />
+                            <span>Sign In</span>
+                          </Link>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                       </>
@@ -402,9 +303,11 @@ export function Header() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <Button variant="outline" size="sm" onClick={() => setIsLoginOpen(true)}>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/auth/login">
                   <LogIn className="mr-2 h-4 w-4" />
                   Sign in
+                  </Link>
                 </Button>
               )}
             </>
@@ -426,7 +329,7 @@ export function Header() {
           </DialogHeader>
           
           <div className="space-y-6">
-            {/* OAuth Buttons */}
+            {/* OAuth Buttons only */}
             <div className="space-y-3">
               <Button 
                 variant="outline" 
@@ -474,77 +377,7 @@ export function Header() {
               </div>
             </div>
 
-            {/* Email/Password Form */}
-            <form onSubmit={handleLogin} className="space-y-4">
-              {loginError && (
-                <Alert variant="destructive">
-                  <AlertDescription>{loginError}</AlertDescription>
-                </Alert>
-              )}
-              
-              <div className="space-y-2">
-                <Label htmlFor="login-email">Email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="login-email"
-                    type="email"
-                    placeholder="Enter your email"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    className="pl-10"
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="login-password">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="login-password"
-                    type={showLoginPassword ? "text" : "password"}
-                    placeholder="Enter your password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    className="pl-10 pr-10"
-                    required
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowLoginPassword(!showLoginPassword)}
-                  >
-                    {showLoginPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Button
-                  type="button"
-                  variant="link"
-                  className="px-0 text-sm"
-                  onClick={() => {
-                    setIsLoginOpen(false);
-                    setIsForgotPasswordOpen(true);
-                  }}
-                >
-                  Forgot password?
-                </Button>
-              </div>
-
-              <Button type="submit" className="w-full" disabled={loginLoading}>
-                {loginLoading ? "Signing in..." : "Sign in"}
-              </Button>
-            </form>
+            {/* Email/Password form removed - use dedicated /auth/login page if needed */}
 
             <div className="text-center text-sm">
               Don&apos;t have an account?{" "}
@@ -625,113 +458,7 @@ export function Header() {
               </div>
             </div>
 
-            {/* Email/Password Form */}
-            <form onSubmit={handleSignup} className="space-y-4">
-              {signupError && (
-                <Alert variant="destructive">
-                  <AlertDescription>{signupError}</AlertDescription>
-                </Alert>
-              )}
-              {signupMessage && (
-                <Alert>
-                  <AlertDescription>{signupMessage}</AlertDescription>
-                </Alert>
-              )}
-              
-              <div className="space-y-2">
-                <Label htmlFor="signup-name">Full Name</Label>
-                <div className="relative">
-                  <UserIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="signup-name"
-                    type="text"
-                    placeholder="Enter your full name"
-                    value={signupFullName}
-                    onChange={(e) => setSignupFullName(e.target.value)}
-                    className="pl-10"
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="signup-email">Email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="signup-email"
-                    type="email"
-                    placeholder="Enter your email"
-                    value={signupEmail}
-                    onChange={(e) => setSignupEmail(e.target.value)}
-                    className="pl-10"
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="signup-password">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="signup-password"
-                    type={showSignupPassword ? "text" : "password"}
-                    placeholder="Create a password"
-                    value={signupPassword}
-                    onChange={(e) => setSignupPassword(e.target.value)}
-                    className="pl-10 pr-10"
-                    required
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowSignupPassword(!showSignupPassword)}
-                  >
-                    {showSignupPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="signup-confirm-password">Confirm Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="signup-confirm-password"
-                    type={showSignupConfirmPassword ? "text" : "password"}
-                    placeholder="Confirm your password"
-                    value={signupConfirmPassword}
-                    onChange={(e) => setSignupConfirmPassword(e.target.value)}
-                    className="pl-10 pr-10"
-                    required
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowSignupConfirmPassword(!showSignupConfirmPassword)}
-                  >
-                    {showSignupConfirmPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              <Button type="submit" className="w-full" disabled={signupLoading}>
-                {signupLoading ? "Creating account..." : "Create account"}
-              </Button>
-            </form>
+            {/* Email/Password signup form removed - use dedicated /auth/signup page if needed */}
 
             <div className="text-center text-sm">
               Already have an account?{" "}
@@ -750,62 +477,7 @@ export function Header() {
         </DialogContent>
       </Dialog>
 
-      {/* Forgot Password Modal */}
-      <Dialog open={isForgotPasswordOpen} onOpenChange={setIsForgotPasswordOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader className="text-center">
-            <div className="flex items-center justify-center mb-4">
-              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
-            </div>
-            <DialogTitle className="text-2xl font-bold">Reset your password</DialogTitle>
-            <DialogDescription>
-              Enter your email address and we&apos;ll send you a link to reset your password
-            </DialogDescription>
-          </DialogHeader>
-          
-          <form onSubmit={handleForgotPassword} className="space-y-4">
-            {forgotPasswordMessage && (
-              <Alert variant={forgotPasswordMessage.startsWith('Error') ? "destructive" : "default"}>
-                <AlertDescription>{forgotPasswordMessage}</AlertDescription>
-              </Alert>
-            )}
-            
-            <div className="space-y-2">
-              <Label htmlFor="forgot-password-email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="forgot-password-email"
-                  type="email"
-                  placeholder="Enter your email"
-                  value={forgotPasswordEmail}
-                  onChange={(e) => setForgotPasswordEmail(e.target.value)}
-                  className="pl-10"
-                  required
-                />
-              </div>
-            </div>
-
-            <Button type="submit" className="w-full" disabled={forgotPasswordLoading}>
-              {forgotPasswordLoading ? "Sending..." : "Send reset link"}
-            </Button>
-          </form>
-
-          <div className="text-center text-sm">
-            Remember your password?{" "}
-            <Button
-              variant="link"
-              className="px-0"
-              onClick={() => {
-                setIsForgotPasswordOpen(false);
-                setIsLoginOpen(true);
-              }}
-            >
-              Sign in
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Forgot Password Modal removed - use default auth pages */}
     </header>
   );
 } 
