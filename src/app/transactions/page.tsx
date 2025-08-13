@@ -97,6 +97,7 @@ export default function Transactions() {
   const [quickInput, setQuickInput] = useState("");
   const [quickListening, setQuickListening] = useState(false);
   const [quickRecordingTime, setQuickRecordingTime] = useState(0);
+  const [quickSpeechSupported, setQuickSpeechSupported] = useState(false);
   const mediaStreamRefQuick = useRef<MediaStream | null>(null);
   const mediaRecorderRefQuick = useRef<MediaRecorder | null>(null);
   const audioChunksRefQuick = useRef<Blob[]>([]);
@@ -415,6 +416,12 @@ export default function Transactions() {
       setTimeout(() => quickInputRef.current?.focus(), 50);
     }
   }, [quickOpen]);
+
+  // Detect browser support for voice input (MediaRecorder + getUserMedia)
+  useEffect(() => {
+    const supported = typeof (window as any).MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+    setQuickSpeechSupported(supported);
+  }, []);
 
   const loadMoreTransactions = useCallback(async () => {
     if (!hasMore || isLoadingMore) return;
@@ -1230,7 +1237,7 @@ export default function Transactions() {
                     await handleQuickSend();
                   }
                 }}
-                placeholder="E.g. I spent $12 at Starbucks, groceries 2025-01-12"
+                placeholder="Tap the mic and speak… or type here (e.g., I spent $12 at Starbucks, groceries 2025-01-12)"
                 className="flex-1 min-w-0 text-sm"
                 autoComplete="off"
                 enterKeyHint="done"
@@ -1239,9 +1246,10 @@ export default function Transactions() {
               />
             )}
             <Button
-              variant={quickListening ? 'default' : 'outline'}
+              variant={(quickListening || (quickSpeechSupported && !quickInput.trim())) ? 'default' : 'outline'}
               size="icon"
               aria-label={quickListening ? 'Send recording' : 'Start voice input'}
+              aria-pressed={quickListening}
               onClick={async () => {
                 if (quickListening) {
                   if (mediaRecorderRefQuick.current && mediaRecorderRefQuick.current.state !== 'inactive') {

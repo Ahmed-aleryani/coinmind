@@ -258,7 +258,7 @@ function ChatInput({
                 <>
                   <Button
                     type="button"
-                    variant={isListening ? "default" : "outline"}
+                    variant={isListening || (!isTyping && speechSupported) ? "default" : "outline"}
                     size="icon"
                     disabled={isLoading}
                     onClick={onVoiceInput}
@@ -326,17 +326,8 @@ function ChatInput({
             ) : (
               <>
             <Button
-              type="submit"
-              size="icon"
-              disabled={isLoading || !input.trim()}
-              title="Send message"
-              className="h-[36px] w-[36px] rounded-md flex-shrink-0 relative -top-0.5"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-            <Button
               type="button"
-              variant={isListening ? "default" : "outline"}
+              variant={isListening || (!isTyping && speechSupported) ? "default" : "outline"}
               size="icon"
               disabled={isLoading}
               onClick={onVoiceInput}
@@ -357,6 +348,15 @@ function ChatInput({
               ) : (
                 <Mic className="h-4 w-4" />
               )}
+            </Button>
+            <Button
+              type="submit"
+              size="icon"
+              disabled={isLoading || !input.trim()}
+              title="Send message"
+              className="h-[36px] w-[36px] rounded-md flex-shrink-0 relative -top-0.5"
+            >
+              <Send className="h-4 w-4" />
             </Button>
             <Button
               type="button"
@@ -448,8 +448,8 @@ interface WindowWithSpeechRecognition extends Window {
 
 // Get placeholder text - AI will handle language detection naturally
 function getPlaceholderText(): string {
-  // Default to English placeholder, AI will respond in user's language
-  return "Type your message... (e.g., 'I spent $50 on groceries')";
+  // Encourage voice-first interaction while keeping typing available
+  return "Tap the mic and speak… or type here (e.g., I spent $12 at Starbucks, groceries 2025-01-12)";
 }
 
 export function ChatInterface({ className }: ChatInterfaceProps) {
