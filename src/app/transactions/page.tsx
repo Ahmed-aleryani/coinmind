@@ -695,7 +695,7 @@ export default function Transactions() {
 
   if (isLoading) {
     return (
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <div className="space-y-4">
           <div className="h-8 bg-muted rounded w-1/4"></div>
           <div className="h-4 bg-muted rounded w-1/2"></div>
@@ -708,16 +708,16 @@ export default function Transactions() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Transactions</h1>
           <p className="text-muted-foreground">
             Manage your financial transactions
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto justify-end">
           <Button variant="outline" size="sm">
             <Upload className="w-4 h-4 mr-2" />
             Import CSV
@@ -736,7 +736,7 @@ export default function Transactions() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">
@@ -794,7 +794,7 @@ export default function Transactions() {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
@@ -808,7 +808,7 @@ export default function Transactions() {
             </div>
 
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-full md:w-48">
+              <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="All Categories" />
               </SelectTrigger>
               <SelectContent>
@@ -822,7 +822,7 @@ export default function Transactions() {
             </Select>
 
             <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as "all" | "income" | "expense")}>
-              <SelectTrigger className="w-full md:w-32">
+              <SelectTrigger className="w-full sm:w-32">
                 <SelectValue placeholder="All Types" />
               </SelectTrigger>
               <SelectContent>
@@ -889,7 +889,7 @@ export default function Transactions() {
                       <div
                         key={transaction.id}
                         id={`txn-${transaction.id}`}
-                        className={`flex items-center justify-between px-3 py-2 hover:bg-accent/5 transition-colors ${recentlyAddedIds.has(String(transaction.id)) ? 'ring-2 ring-primary/40 rounded-md bg-primary/5' : ''}`}
+                        className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 py-2 hover:bg-accent/5 transition-colors ${recentlyAddedIds.has(String(transaction.id)) ? 'ring-2 ring-primary/40 rounded-md bg-primary/5' : ''}`}
                       >
                         <div className="flex items-center gap-3 flex-1">
                           <div className="w-8 h-8 bg-background rounded-full flex items-center justify-center border">
@@ -919,7 +919,7 @@ export default function Transactions() {
                           </div>
                         </div>
                         
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
                           <div className="text-right">
                             <div className={`font-semibold text-sm ${
                               transaction.type === "income" ? "text-green-600" : "text-red-600"
@@ -1025,7 +1025,7 @@ export default function Transactions() {
             {/* Basic Information */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Basic Information</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount *</Label>
                   <Input
@@ -1065,7 +1065,7 @@ export default function Transactions() {
             {/* Transaction Details */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Transaction Details</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="category">Category *</Label>
                   <Select

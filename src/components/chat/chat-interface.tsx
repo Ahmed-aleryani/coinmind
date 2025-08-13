@@ -114,8 +114,8 @@ function MessageList({
   onSuggestionClick,
 }: MessageListProps) {
   return (
-    <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
-      <div className="space-y-4 max-w-4xl mx-auto">
+    <ScrollArea ref={scrollAreaRef} className="flex-1 p-3 sm:p-4 min-h-0">
+      <div className="space-y-4 max-w-4xl mx-auto pb-24">
         {messages.map((msg) => (
           <MessageItem
             key={msg.id}
@@ -164,6 +164,7 @@ interface ChatInputProps {
   onReceiptUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   receiptFileInputRef: React.RefObject<HTMLInputElement | null>;
   recordingTime: number;
+  onFocus?: () => void;
 }
 
 function ChatInput({
@@ -179,37 +180,40 @@ function ChatInput({
   onReceiptUpload,
   receiptFileInputRef,
   recordingTime,
+  onFocus,
 }: ChatInputProps) {
   return (
-    <div className="border-t p-4">
+    <div className="sticky bottom-0 z-10 border-t p-3 sm:p-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-[env(safe-area-inset-bottom)]">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           onSubmit(e);
         }}
         className="max-w-4xl mx-auto"
+        onClick={() => onFocus?.()}
       >
-        <div className="flex gap-3 items-start">
-          <div className="flex-1 relative">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-start">
+          <div className="flex-1 relative w-full">
             <TextareaAutosize
               value={input}
               onChange={(e) => onInputChange(e.target.value)}
               onKeyPress={onKeyPress}
+              onFocus={() => onFocus?.()}
               placeholder={
                 isListening
                   ? `🎤 Listening... ${recordingTime > 0 ? `(${recordingTime}s)` : ''}`
                   : getPlaceholderText()
               }
               className={cn(
-                "w-full resize-none border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 rounded-md min-h-[36px]",
+                "w-full resize-none border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 rounded-md min-h-[40px] sm:min-h-[36px] max-h-[160px] overflow-y-auto",
                 isListening && "border-red-300 bg-red-50 dark:bg-red-950/20"
               )}
               minRows={1}
-              maxRows={4}
+              maxRows={5}
               disabled={isLoading}
             />
           </div>
-          <div className="flex gap-2 items-start">
+          <div className="flex gap-2 items-center sm:items-start flex-wrap sm:flex-nowrap justify-end">
             <Button
               type="submit"
               size="icon"
@@ -1088,7 +1092,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   };
 
   return (
-    <div className={cn("flex flex-col h-full", className)}>
+    <div className={cn("flex flex-col h-full w-full overflow-hidden", className)}>
       <MessageList
         messages={messages}
         isLoading={isLoading}
@@ -1108,6 +1112,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         onReceiptUpload={handleReceiptUpload}
         receiptFileInputRef={receiptFileInputRef}
         recordingTime={recordingTime}
+        onFocus={scrollToBottom}
       />
       <input
         type="file"
