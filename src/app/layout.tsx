@@ -24,9 +24,8 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_BASE_URL || "https://www.coinmind-ai.com"),
-  title: "Coinmind — AI Finance Copilot",
-  description:
-    "Chat-first personal finance copilot. Import receipts, auto-categorize transactions with AI, track across multiple currencies, analyze trends, and export your data.",
+  title: "AI-Powered Personal Finance Tracker",
+  description: "Track your finances with natural language. Chat your way to better financial health.",
   keywords: [
     "Coinmind",
     "personal finance",
@@ -42,9 +41,8 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Coinmind" }],
   openGraph: {
-    title: "Coinmind — AI Finance Copilot",
-    description:
-      "Chat-first personal finance tracker with AI categorization, multi-currency analytics, receipt parsing, and exports.",
+    title: "AI-Powered Personal Finance Tracker",
+    description: "Track your finances with natural language. Chat your way to better financial health.",
     url: "/",
     siteName: "Coinmind",
     images: [
@@ -60,9 +58,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Coinmind — AI Finance Copilot",
-    description:
-      "Chat-first personal finance tracker with AI categorization, multi-currency analytics, receipt parsing, and exports.",
+    title: "AI-Powered Personal Finance Tracker",
+    description: "Track your finances with natural language. Chat your way to better financial health.",
     images: ["/opengraph-image"],
   },
   // File-based icons are provided via src/app/icon.svg and src/app/favicon.ico
