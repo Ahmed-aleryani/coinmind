@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabaseClient } from "@/lib/auth-client"
 import { Mail, Lock, Eye, EyeOff, UserIcon } from "lucide-react"
+import { ChatInterface } from "@/components/chat/chat-interface"
 
 export default function Home() {
   const { user, loading, signInAnonymously } = useAuth()
@@ -266,6 +267,10 @@ export default function Home() {
               Privacy Policy
             </Link>
           </p>
+        </div>
+        {/* Embedded Chat */}
+        <div className="mt-12 border rounded-lg">
+          <ChatInterface className="h-[520px]" />
         </div>
       </div>
 
