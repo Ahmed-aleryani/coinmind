@@ -33,7 +33,7 @@ export function BetaBanner() {
           <span>
             You’re using the Beta version of Coinmind. We’d love your feedback.
             {" "}
-            <Link href="https://forms.gle/" className="underline underline-offset-2 hover:no-underline">Share feedback</Link>
+            <Link href="https://forms.gle/jd9KjRQDN6zBKncm9" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:no-underline">Share feedback</Link>
           </span>
         </div>
         <button onClick={dismiss} aria-label="Dismiss beta banner" className="text-amber-900/70 hover:text-amber-900">Dismiss</button>
