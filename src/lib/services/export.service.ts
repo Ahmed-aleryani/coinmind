@@ -1,6 +1,8 @@
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { formatDate } from '@/lib/utils/formatters';
 import { EnrichedTransaction } from '@/lib/services/transaction.service';
@@ -191,15 +193,22 @@ export class ExportService {
       format: 'a4',
     });
 
-    // Add CoinMind logo
+    // Add CoinMind logo (best-effort; ignore if not available)
     try {
-      const logoResponse = await fetch('/coinmind-logo.svg');
-      const logoSvg = await logoResponse.text();
-      // Convert SVG to base64 for jsPDF
-      const logoBase64 = 'data:image/svg+xml;base64,' + btoa(logoSvg);
-      doc.addImage(logoBase64, 'SVG', 20, 20, 40, 40);
-    } catch (error) {
-      console.warn('Could not load logo, using text fallback');
+      const logoPath = path.join(process.cwd(), 'public', 'coinmind-logo.svg');
+      const svgBuffer = await fs.readFile(logoPath);
+      const logoBase64 = 'data:image/svg+xml;base64,' + svgBuffer.toString('base64');
+      // Some environments may not support SVG images in jsPDF; this is best-effort
+      try {
+        // Try to add SVG; environments without plugin may throw
+        doc.addImage(logoBase64 as any, 'SVG' as any, 20, 20, 40, 40);
+      } catch {
+        // Fallback: draw a simple brand mark rectangle if SVG unsupported
+        doc.setFillColor(0, 0, 0);
+        doc.roundedRect(20, 20, 40, 40, 6, 6, 'S');
+      }
+    } catch {
+      // Ignore if logo missing
     }
 
     // Header: App Name (positioned next to logo)

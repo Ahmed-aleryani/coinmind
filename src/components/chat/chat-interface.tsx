@@ -13,6 +13,7 @@ import {
   Bot,
   FileSpreadsheet,
   MicOff,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMessageTime } from "@/lib/utils/formatters";
@@ -114,8 +115,8 @@ function MessageList({
   onSuggestionClick,
 }: MessageListProps) {
   return (
-    <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
-      <div className="space-y-4 max-w-4xl mx-auto">
+    <ScrollArea ref={scrollAreaRef} className="flex-1 p-3 sm:p-4 min-h-0">
+      <div className="space-y-4 max-w-4xl mx-auto pb-40 md:pb-28">
         {messages.map((msg) => (
           <MessageItem
             key={msg.id}
@@ -160,10 +161,12 @@ interface ChatInputProps {
   isListening: boolean;
   speechSupported: boolean;
   onVoiceInput: () => void;
+  onCancelVoice: () => void;
   onCSVImport: () => void;
   onReceiptUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   receiptFileInputRef: React.RefObject<HTMLInputElement | null>;
   recordingTime: number;
+  onFocus?: () => void;
 }
 
 function ChatInput({
@@ -179,49 +182,152 @@ function ChatInput({
   onReceiptUpload,
   receiptFileInputRef,
   recordingTime,
+  onFocus,
+  onCancelVoice,
 }: ChatInputProps) {
+  const isTyping = (input || "").trim().length > 0;
   return (
-    <div className="border-t p-4">
+    <div className="sticky bottom-0 z-10 border-t p-3 sm:p-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-[env(safe-area-inset-bottom)]">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           onSubmit(e);
         }}
-        className="max-w-4xl mx-auto"
+        className="max-w-4xl mx-auto px-3 sm:px-4"
+        onClick={() => onFocus?.()}
       >
-        <div className="flex gap-3 items-start">
-          <div className="flex-1 relative">
-            <TextareaAutosize
-              value={input}
-              onChange={(e) => onInputChange(e.target.value)}
-              onKeyPress={onKeyPress}
-              placeholder={
-                isListening
-                  ? `🎤 Listening... ${recordingTime > 0 ? `(${recordingTime}s)` : ''}`
-                  : getPlaceholderText()
-              }
-              className={cn(
-                "w-full resize-none border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 rounded-md min-h-[36px]",
-                isListening && "border-red-300 bg-red-50 dark:bg-red-950/20"
-              )}
-              minRows={1}
-              maxRows={4}
-              disabled={isLoading}
-            />
+          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex-1 relative w-full">
+            {isListening ? (
+              <div className="w-full border border-input rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground select-none">
+                🎤 Listening… {recordingTime > 0 ? `(${recordingTime}s)` : ''}
+              </div>
+            ) : (
+              <TextareaAutosize
+                value={input}
+                onChange={(e) => onInputChange(e.target.value)}
+                onKeyPress={onKeyPress}
+                onFocus={() => onFocus?.()}
+                placeholder={getPlaceholderText()}
+                className={cn(
+                  "w-full resize-none border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 rounded-md min-h-[40px] sm:min-h-[36px] max-h-[160px] overflow-y-auto"
+                )}
+                minRows={1}
+                maxRows={5}
+                disabled={isLoading}
+              />
+            )}
           </div>
-          <div className="flex gap-2 items-start">
-            <Button
-              type="submit"
-              size="icon"
-              disabled={isLoading || !input.trim()}
-              title="Send message"
-              className="h-[36px] w-[36px] rounded-md flex-shrink-0"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
+            {/* Mobile-only toolbar inline (outside textbox, same row) */}
+            <div className="flex items-center gap-2 sm:hidden">
+              {isListening ? (
+                <>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="secondary"
+                    onClick={onVoiceInput}
+                    title="Stop recording and send"
+                    className="h-10 w-10 rounded-md"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    onClick={onCancelVoice}
+                    title="Cancel recording"
+                    className="h-10 w-10 rounded-md"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </>
+              ) : isTyping ? (
+                <Button
+                  type="submit"
+                  size="icon"
+                  variant="secondary"
+                  disabled={isLoading}
+                  title="Send message"
+                  className="h-10 w-10 rounded-md relative -top-0.5"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant={isListening || (!isTyping && speechSupported) ? "default" : "outline"}
+                    size="icon"
+                    disabled={isLoading}
+                    onClick={onVoiceInput}
+                    title={
+                      !speechSupported
+                        ? "Voice input not supported in your browser"
+                        : isListening
+                        ? "Click to stop recording"
+                        : "Click to start voice input (20s max)"
+                    }
+                    className={cn("h-10 w-10 rounded-md", isListening ? "animate-pulse bg-red-500 hover:bg-red-600" : "")}
+                  >
+                    {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    disabled={isLoading}
+                    onClick={() => receiptFileInputRef.current?.click()}
+                    title="Upload receipt"
+                    className="h-10 w-10 rounded-md"
+                  >
+                    <Camera className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    disabled={isLoading}
+                    onClick={onCSVImport}
+                    title="Import CSV/Excel file"
+                    className="h-10 w-10 rounded-md"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+            </div>
+            {/* Desktop/web toolbar - keep existing behavior */}
+            <div className="hidden sm:flex gap-2 items-center sm:items-start flex-wrap sm:flex-nowrap justify-end">
+            {isListening ? (
+              <>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="secondary"
+                  onClick={onVoiceInput}
+                  title="Stop recording and send"
+                  className="h-[36px] w-[36px] rounded-md flex-shrink-0 relative -top-0.5"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="icon"
+                  onClick={onCancelVoice}
+                  title="Cancel recording"
+                  className="h-[36px] w-[36px] rounded-md flex-shrink-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <>
             <Button
               type="button"
-              variant={isListening ? "default" : "outline"}
+              variant={isListening || (!isTyping && speechSupported) ? "default" : "outline"}
               size="icon"
               disabled={isLoading}
               onClick={onVoiceInput}
@@ -242,6 +348,15 @@ function ChatInput({
               ) : (
                 <Mic className="h-4 w-4" />
               )}
+            </Button>
+            <Button
+              type="submit"
+              size="icon"
+              disabled={isLoading || !input.trim()}
+              title="Send message"
+              className="h-[36px] w-[36px] rounded-md flex-shrink-0 relative -top-0.5"
+            >
+              <Send className="h-4 w-4" />
             </Button>
             <Button
               type="button"
@@ -265,6 +380,8 @@ function ChatInput({
             >
               <FileSpreadsheet className="h-4 w-4" />
             </Button>
+              </>
+            )}
           </div>
         </div>
         <input
@@ -331,8 +448,8 @@ interface WindowWithSpeechRecognition extends Window {
 
 // Get placeholder text - AI will handle language detection naturally
 function getPlaceholderText(): string {
-  // Default to English placeholder, AI will respond in user's language
-  return "Type your message... (e.g., 'I spent $50 on groceries')";
+  // Encourage voice-first interaction while keeping typing available
+  return "Tap the mic and speak… or type here (e.g., I spent $12 at Starbucks, groceries 2025-01-12)";
 }
 
 export function ChatInterface({ className }: ChatInterfaceProps) {
@@ -372,6 +489,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const useMediaRecorderRef = useRef<boolean>(false);
+  const recordingCanceledRef = useRef<boolean>(false);
 
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
@@ -616,6 +734,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         mediaRecorderRef.current = mediaRecorder;
         mediaRecorder.onstart = () => {
           setIsListening(true);
+          recordingCanceledRef.current = false;
           setRecordingTime(0);
           recordingTimerRef.current = setInterval(() => {
             setRecordingTime((prev) => {
@@ -632,6 +751,14 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         };
         mediaRecorder.onstop = async () => {
           try {
+            if (recordingCanceledRef.current) {
+              recordingCanceledRef.current = false;
+              setIsListening(false);
+              if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+              setRecordingTime(0);
+              if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach((t) => t.stop()); mediaStreamRef.current = null; }
+              return;
+            }
             const blob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
             const formData = new FormData();
             formData.append('audio', blob, 'recording.webm');
@@ -670,6 +797,14 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       return;
     }
     // No Web Speech fallback; Gemini STT only
+  };
+
+  const cancelVoiceInput = () => {
+    if (!isListening) return;
+    recordingCanceledRef.current = true;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
   };
 
   const handleCSVImport = () => {
@@ -1088,7 +1223,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   };
 
   return (
-    <div className={cn("flex flex-col h-full", className)}>
+    <div className={cn("flex flex-col h-full w-full overflow-hidden", className)}>
       <MessageList
         messages={messages}
         isLoading={isLoading}
@@ -1104,10 +1239,12 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         isListening={isListening}
         speechSupported={speechSupported}
         onVoiceInput={handleVoiceInput}
+        onCancelVoice={cancelVoiceInput}
         onCSVImport={handleCSVImport}
         onReceiptUpload={handleReceiptUpload}
         receiptFileInputRef={receiptFileInputRef}
         recordingTime={recordingTime}
+        onFocus={scrollToBottom}
       />
       <input
         type="file"

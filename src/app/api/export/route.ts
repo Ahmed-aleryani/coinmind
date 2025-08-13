@@ -10,7 +10,9 @@ export async function POST(request: NextRequest) {
   logger.info({ requestId, method: 'POST', url: request.url }, 'Export API request started');
   
   try {
-    const { services, userId } = await getServices();
+    // Prefer client user id from cookie to avoid creating a new anonymous user
+    const cookieUserId = request.cookies.get('cm_uid')?.value;
+    const { services, userId } = await getServices(cookieUserId);
     
     if (!userId) {
       return NextResponse.json(
@@ -22,7 +24,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const options: ExportOptions = body.options;
     
-    logger.info({ requestId, options }, 'Export options received');
+    logger.info({ requestId, options, userId, cookieUserId }, 'Export options received');
 
     // Validate required options
     if (!options.format || !options.dateRange || !options.viewType) {

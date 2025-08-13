@@ -950,7 +950,7 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
             <Card key={i} className="animate-pulse">
@@ -968,7 +968,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -1907,7 +1907,7 @@ export default function DashboardPage() {
             {filteredTransactions.slice(0, 10).map((transaction) => (
               <div
                 key={transaction.id}
-                className="flex items-center justify-between p-3 border rounded-lg"
+                className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 border rounded-lg"
               >
                 <div className="flex items-center space-x-3">
                   <div className="text-xl">

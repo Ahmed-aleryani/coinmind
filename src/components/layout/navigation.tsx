@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, List } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/providers/auth-provider";
 
 const navigation = [
   {
@@ -22,6 +23,10 @@ const navigation = [
 
 export function Navigation() {
   const pathname = usePathname();
+  const { user, loading } = useAuth();
+
+  // Hide bottom navigation for signed-out users or while auth is loading
+  if (loading || !user) return null;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t supports-[backdrop-filter]:bg-background/60 md:hidden">

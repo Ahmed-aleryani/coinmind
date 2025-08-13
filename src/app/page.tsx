@@ -173,9 +173,18 @@ export default function Home() {
     }
   }
 
+  // If authenticated, show a full-bleed chat that fills the page (no container/borders)
+  if (user && !loading) {
+    return (
+      <div className="min-h-[calc(100vh-8rem)] bg-background">
+        <ChatInterface className="h-[calc(100vh-8rem)]" />
+      </div>
+    )
+  }
+
   // Show welcome screen for guests
   return (
-    <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center bg-background p-4">
+    <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center bg-background p-4 sm:p-6">
       <div className="w-full max-w-4xl mx-auto">
         {/* Marketing hero visible only for guests or while auth is loading */}
         {(!user || loading) && (
@@ -195,7 +204,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6 mb-12">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
               <Card>
                 <CardHeader>
                   <div className="flex items-center space-x-2">
@@ -274,12 +283,7 @@ export default function Home() {
             </div>
           </>
         )}
-        {/* Embedded Chat for signed-in users only */}
-        {user && !loading && (
-          <div className="mt-12 border rounded-lg">
-            <ChatInterface className="h-[520px]" />
-          </div>
-        )}
+        {/* Embedded Chat for signed-in users only (handled by early return) */}
       </div>
 
       {/* Login Modal */}

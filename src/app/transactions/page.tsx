@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import logger from "@/lib/utils/logger";
 import { Textarea } from "@/components/ui/textarea";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Edit, Trash2, ChevronDown, ChevronUp, Plus, Search, Upload, MessageCircle, Mic, MicOff, Send, X } from "lucide-react";
+import { MoreHorizontal, Edit, Trash2, ChevronDown, ChevronUp, Plus, Search, MessageCircle, Mic, Send, X } from "lucide-react";
 import { formatCurrency, formatDate, getCategoryEmoji } from "@/lib/utils/formatters";
 import { toast } from "sonner";
 
@@ -97,6 +97,7 @@ export default function Transactions() {
   const [quickInput, setQuickInput] = useState("");
   const [quickListening, setQuickListening] = useState(false);
   const [quickRecordingTime, setQuickRecordingTime] = useState(0);
+  const [quickSpeechSupported, setQuickSpeechSupported] = useState(false);
   const mediaStreamRefQuick = useRef<MediaStream | null>(null);
   const mediaRecorderRefQuick = useRef<MediaRecorder | null>(null);
   const audioChunksRefQuick = useRef<Blob[]>([]);
@@ -333,6 +334,8 @@ export default function Transactions() {
   const analyserRefQuick = useRef<AnalyserNode | null>(null);
   const levelIntervalRefQuick = useRef<number | null>(null);
   const lastNonSilentRefQuick = useRef<number>(0);
+  // Flag to prevent STT/send when user cancels a recording
+  const quickCanceledRef = useRef<boolean>(false);
 
   const fetchTransactions = useCallback(async (page = 0, append = false) => {
     try {
@@ -406,6 +409,19 @@ export default function Transactions() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [quickOpen, handleQuickSend]);
+
+  // Auto-focus Quick Add input when panel opens for better UX
+  useEffect(() => {
+    if (quickOpen) {
+      setTimeout(() => quickInputRef.current?.focus(), 50);
+    }
+  }, [quickOpen]);
+
+  // Detect browser support for voice input (MediaRecorder + getUserMedia)
+  useEffect(() => {
+    const supported = typeof (window as any).MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+    setQuickSpeechSupported(supported);
+  }, []);
 
   const loadMoreTransactions = useCallback(async () => {
     if (!hasMore || isLoadingMore) return;
@@ -695,7 +711,7 @@ export default function Transactions() {
 
   if (isLoading) {
     return (
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <div className="space-y-4">
           <div className="h-8 bg-muted rounded w-1/4"></div>
           <div className="h-4 bg-muted rounded w-1/2"></div>
@@ -708,20 +724,16 @@ export default function Transactions() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Transactions</h1>
           <p className="text-muted-foreground">
             Manage your financial transactions
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Upload className="w-4 h-4 mr-2" />
-            Import CSV
-          </Button>
+        <div className="flex gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto justify-end">
           <ExportSettings
             onExport={handleExport}
             supportedCurrencies={supportedCurrencies}
@@ -736,7 +748,7 @@ export default function Transactions() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">
@@ -794,7 +806,7 @@ export default function Transactions() {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
@@ -808,7 +820,7 @@ export default function Transactions() {
             </div>
 
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-full md:w-48">
+              <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="All Categories" />
               </SelectTrigger>
               <SelectContent>
@@ -822,7 +834,7 @@ export default function Transactions() {
             </Select>
 
             <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as "all" | "income" | "expense")}>
-              <SelectTrigger className="w-full md:w-32">
+              <SelectTrigger className="w-full sm:w-32">
                 <SelectValue placeholder="All Types" />
               </SelectTrigger>
               <SelectContent>
@@ -889,7 +901,7 @@ export default function Transactions() {
                       <div
                         key={transaction.id}
                         id={`txn-${transaction.id}`}
-                        className={`flex items-center justify-between px-3 py-2 hover:bg-accent/5 transition-colors ${recentlyAddedIds.has(String(transaction.id)) ? 'ring-2 ring-primary/40 rounded-md bg-primary/5' : ''}`}
+                        className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 py-2 hover:bg-accent/5 transition-colors ${recentlyAddedIds.has(String(transaction.id)) ? 'ring-2 ring-primary/40 rounded-md bg-primary/5' : ''}`}
                       >
                         <div className="flex items-center gap-3 flex-1">
                           <div className="w-8 h-8 bg-background rounded-full flex items-center justify-center border">
@@ -919,7 +931,7 @@ export default function Transactions() {
                           </div>
                         </div>
                         
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
                           <div className="text-right">
                             <div className={`font-semibold text-sm ${
                               transaction.type === "income" ? "text-green-600" : "text-red-600"
@@ -1009,7 +1021,7 @@ export default function Transactions() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-xl w-[calc(100vw-2rem)] max-h-[85vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>
               {editingTransaction ? "Edit Transaction" : "Add New Transaction"}
@@ -1025,7 +1037,7 @@ export default function Transactions() {
             {/* Basic Information */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Basic Information</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount *</Label>
                   <Input
@@ -1065,7 +1077,7 @@ export default function Transactions() {
             {/* Transaction Details */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Transaction Details</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="category">Category *</Label>
                   <Select
@@ -1160,7 +1172,7 @@ export default function Transactions() {
             </div>
 
             {/* Action Buttons */}
-            <DialogFooter className="flex gap-3 pt-4">
+            <DialogFooter className="flex flex-col sm:flex-row gap-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
@@ -1168,13 +1180,13 @@ export default function Transactions() {
                   setIsAddDialogOpen(false);
                   setIsEditDialogOpen(false);
                 }}
-                className="flex-1"
+                className="w-full sm:flex-1"
               >
                 Cancel
               </Button>
               <Button 
                 type="submit" 
-                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                className="w-full sm:flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
                 size="lg"
               >
                 {editingTransaction ? "Update" : "Save"} Transaction
@@ -1185,7 +1197,14 @@ export default function Transactions() {
       </Dialog>
 
       {/* Quick Add floating trigger and panel (bottom-center) */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+      {quickOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 dark:bg-black/50 z-40"
+          onClick={() => setQuickOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-50">
         {!quickOpen ? (
           <Button
             onClick={() => setQuickOpen(true)}
@@ -1196,7 +1215,7 @@ export default function Transactions() {
             <MessageCircle className="w-5 h-5 mr-2" /> Quick add
           </Button>
         ) : (
-          <div className="bg-background border border-border rounded-xl shadow-xl w-[min(680px,90vw)] p-3 flex items-center gap-2">
+          <div className="bg-background rounded-xl shadow-2xl w-[min(680px,92vw)] p-3 flex items-center gap-1 sm:gap-2 ring-1 ring-border focus-within:ring-2 focus-within:ring-primary transition-shadow">
             <button
               aria-label="Close quick add"
               className="shrink-0 rounded-md hover:bg-muted p-1 text-muted-foreground"
@@ -1204,24 +1223,33 @@ export default function Transactions() {
             >
               <X className="w-4 h-4" />
             </button>
-            <Input
-              value={quickInput}
-              onChange={(e) => setQuickInput(e.target.value)}
-              onKeyDown={async (e) => {
-                if ((e.key === 'Enter' || e.key === 'NumpadEnter') && !e.shiftKey) {
-                  e.preventDefault();
-                  await handleQuickSend();
-                }
-              }}
-              placeholder="E.g. I spent $12 at Starbucks, groceries 2025-01-12"
-              className="flex-1"
-              ref={quickInputRef}
-            />
+            {quickListening ? (
+              <div className="flex-1 min-w-0 px-3 text-sm text-muted-foreground select-none">
+                Listening… speak naturally
+              </div>
+            ) : (
+              <Input
+                value={quickInput}
+                onChange={(e) => setQuickInput(e.target.value)}
+                onKeyDown={async (e) => {
+                  if ((e.key === 'Enter' || e.key === 'NumpadEnter') && !e.shiftKey) {
+                    e.preventDefault();
+                    await handleQuickSend();
+                  }
+                }}
+                placeholder="Tap the mic and speak… or type here (e.g., I spent $12 at Starbucks, groceries 2025-01-12)"
+                className="flex-1 min-w-0 text-sm"
+                autoComplete="off"
+                enterKeyHint="done"
+                aria-label="Quick add transaction"
+                ref={quickInputRef}
+              />
+            )}
             <Button
-              variant={quickListening ? 'default' : 'outline'}
+              variant={(quickListening || (quickSpeechSupported && !quickInput.trim())) ? 'default' : 'outline'}
               size="icon"
-              aria-label={quickListening ? 'Stop recording' : 'Start voice input'}
-              className={quickListening ? 'bg-red-500 hover:bg-red-600' : ''}
+              aria-label={quickListening ? 'Send recording' : 'Start voice input'}
+              aria-pressed={quickListening}
               onClick={async () => {
                 if (quickListening) {
                   if (mediaRecorderRefQuick.current && mediaRecorderRefQuick.current.state !== 'inactive') {
@@ -1297,6 +1325,20 @@ export default function Transactions() {
                   };
                   mediaRecorder.onstop = async () => {
                     try {
+                      if (quickCanceledRef.current) {
+                        // Reset cancel flag and clean up without sending
+                        quickCanceledRef.current = false;
+                        setQuickListening(false);
+                        setQuickRecordingTime(0);
+                        if (quickTimerRef.current) { clearTimeout(quickTimerRef.current); quickTimerRef.current = null; }
+                        if (quickTickRef.current) { clearInterval(quickTickRef.current); quickTickRef.current = null; }
+                        try { if (audioContextRefQuick.current) { audioContextRefQuick.current.close(); audioContextRefQuick.current = null; } } catch {}
+                        if (mediaStreamRefQuick.current) {
+                          mediaStreamRefQuick.current.getTracks().forEach((t) => t.stop());
+                          mediaStreamRefQuick.current = null;
+                        }
+                        return;
+                      }
                       const blob = new Blob(audioChunksRefQuick.current, { type: mediaRecorder.mimeType || 'audio/webm' });
                       const fd = new FormData();
                       fd.append('audio', blob, 'quick.webm');
@@ -1334,22 +1376,41 @@ export default function Transactions() {
                 }
               }}
             >
-              {quickListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              {quickListening ? <Send className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </Button>
             {quickListening && (
-              <span className="text-xs text-muted-foreground mr-2">
+              <span className="hidden sm:inline text-xs text-muted-foreground mr-2">
                 Recording… ({quickRecordingTime}s)
               </span>
             )}
-            <Button
-              onClick={async () => {
-                await handleQuickSend();
-              }}
-              disabled={!quickInput.trim()}
-            >
-              <Send className="w-4 h-4 mr-1" />
-              Add
-            </Button>
+            {quickListening ? (
+              <Button
+                variant="destructive"
+                size="icon"
+                onClick={() => {
+                  // Mark as cancelled and stop recorder to trigger cleanup path in onstop
+                  quickCanceledRef.current = true;
+                  audioChunksRefQuick.current = [];
+                  if (mediaRecorderRefQuick.current && mediaRecorderRefQuick.current.state !== 'inactive') {
+                    mediaRecorderRefQuick.current.stop();
+                  }
+                }}
+                aria-label="Cancel recording"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            ) : (
+              <Button
+                onClick={async () => {
+                  await handleQuickSend();
+                }}
+                disabled={!quickInput.trim()}
+                aria-label="Add transaction"
+              >
+                <Send className="w-4 h-4 mr-1" />
+                <span className="hidden sm:inline">Add</span>
+              </Button>
+            )}
           </div>
         )}
       </div>
