@@ -187,7 +187,7 @@ export default function Home() {
       <div className="w-full max-w-4xl mx-auto">
         <div className="text-center mb-12">
           <div className="flex items-center justify-center mb-6">
-            <img src="/coinmind-logo.svg" alt="Coinmind" className="w-16 h-16 mr-4" />
+            <img src="/coinmind-logo.svg" alt="Coinmind" className="w-16 h-16 mr-4 dark:invert" />
             <span className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
               Coinmind
             </span>
@@ -284,7 +284,7 @@ export default function Home() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="text-center">
             <div className="flex items-center justify-center mb-4">
-              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
             </div>
             <DialogTitle className="text-2xl font-bold">Welcome back</DialogTitle>
             <DialogDescription>
@@ -435,7 +435,7 @@ export default function Home() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="text-center">
             <div className="flex items-center justify-center mb-4">
-              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
             </div>
             <DialogTitle className="text-2xl font-bold">Create your account</DialogTitle>
             <DialogDescription>
@@ -622,7 +622,7 @@ export default function Home() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="text-center">
             <div className="flex items-center justify-center mb-4">
-              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
             </div>
             <DialogTitle className="text-2xl font-bold">Reset your password</DialogTitle>
             <DialogDescription>

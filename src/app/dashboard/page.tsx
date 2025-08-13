@@ -554,8 +554,8 @@ export default function DashboardPage() {
         <Dialog open={isLoginOpen} onOpenChange={setIsLoginOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader className="text-center">
-              <div className="flex items-center justify-center mb-4">
-                <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+            <div className="flex items-center justify-center mb-4">
+                <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
               </div>
               <DialogTitle className="text-2xl font-bold">Welcome back</DialogTitle>
               <DialogDescription>
@@ -706,7 +706,7 @@ export default function DashboardPage() {
           <DialogContent className="sm:max-w-md">
             <DialogHeader className="text-center">
               <div className="flex items-center justify-center mb-4">
-                <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+                <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
               </div>
               <DialogTitle className="text-2xl font-bold">Create your account</DialogTitle>
               <DialogDescription>
@@ -893,7 +893,7 @@ export default function DashboardPage() {
           <DialogContent className="sm:max-w-md">
             <DialogHeader className="text-center">
               <div className="flex items-center justify-center mb-4">
-                <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+                <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
               </div>
               <DialogTitle className="text-2xl font-bold">Reset your password</DialogTitle>
               <DialogDescription>

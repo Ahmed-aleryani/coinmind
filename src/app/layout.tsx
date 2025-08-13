@@ -23,10 +23,50 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FinanceChat - AI-Powered Personal Finance Tracker",
-  description: "Track your finances with natural language. Chat your way to better financial health.",
-  keywords: ["finance", "personal finance", "AI", "chat", "expense tracking", "budget"],
-  authors: [{ name: "FinanceChat Team" }],
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_BASE_URL || "https://www.coinmind-ai.com"),
+  title: "Coinmind — AI Finance Copilot",
+  description:
+    "Chat-first personal finance copilot. Import receipts, auto-categorize transactions with AI, track across multiple currencies, analyze trends, and export your data.",
+  keywords: [
+    "Coinmind",
+    "personal finance",
+    "AI",
+    "finance copilot",
+    "budgeting",
+    "expense tracking",
+    "multi-currency",
+    "receipts OCR",
+    "analytics",
+    "CSV export",
+    "Excel export",
+  ],
+  authors: [{ name: "Coinmind" }],
+  openGraph: {
+    title: "Coinmind — AI Finance Copilot",
+    description:
+      "Chat-first personal finance tracker with AI categorization, multi-currency analytics, receipt parsing, and exports.",
+    url: "/",
+    siteName: "Coinmind",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Coinmind — AI Finance Copilot",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Coinmind — AI Finance Copilot",
+    description:
+      "Chat-first personal finance tracker with AI categorization, multi-currency analytics, receipt parsing, and exports.",
+    images: ["/opengraph-image"],
+  },
+  // File-based icons are provided via src/app/icon.svg and src/app/favicon.ico
+  category: "finance",
 };
 
 export const viewport: Viewport = {
