@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu, Sun, User, LogOut, LogIn, List, Eye, EyeOff, Mail, Lock, User as UserIcon } from "lucide-react";
+import { ModeToggle } from "@/components/ui/mode-toggle";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -218,7 +219,7 @@ export function Header() {
             <SheetContent side="left" className="w-80 sm:w-96">
               {/* Mobile Sheet Header */}
               <div className="flex items-center space-x-3 mb-8">
-                <img src="/coinmind-logo.svg" alt="Coinmind" className="w-8 h-8" />
+                <img src="/coinmind-logo.svg" alt="Coinmind" className="w-8 h-8 dark:invert" />
                 <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
                   Coinmind
                 </span>
@@ -256,7 +257,7 @@ export function Header() {
         {/* Desktop Logo and Navigation - Hidden on Mobile */}
         <div className="hidden md:flex items-center">
           <Link href="/" className="flex items-center space-x-3 mr-8">
-            <img src="/coinmind-logo.svg" alt="Coinmind" className="w-8 h-8" />
+            <img src="/coinmind-logo.svg" alt="Coinmind" className="w-8 h-8 dark:invert" />
             <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
               Coinmind
             </span>
@@ -286,7 +287,7 @@ export function Header() {
         {/* Mobile Logo (centered) - Only visible on mobile */}
         <div className="flex-1 flex justify-center md:hidden">
           <Link href="/" className="flex items-center space-x-2">
-            <img src="/coinmind-logo.svg" alt="Coinmind" className="w-7 h-7" />
+            <img src="/coinmind-logo.svg" alt="Coinmind" className="w-7 h-7 dark:invert" />
             <span className="text-lg font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
               Coinmind
             </span>
@@ -295,6 +296,7 @@ export function Header() {
 
         {/* Right side actions */}
         <div className="flex items-center space-x-2 ml-auto">
+          <ModeToggle />
           {/* Auth Controls */}
           {!loading && (
             <>
@@ -415,7 +417,7 @@ export function Header() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="text-center">
             <div className="flex items-center justify-center mb-4">
-              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
             </div>
             <DialogTitle className="text-2xl font-bold">Welcome back</DialogTitle>
             <DialogDescription>
@@ -566,7 +568,7 @@ export function Header() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="text-center">
             <div className="flex items-center justify-center mb-4">
-              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
             </div>
             <DialogTitle className="text-2xl font-bold">Create your account</DialogTitle>
             <DialogDescription>
@@ -753,7 +755,7 @@ export function Header() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="text-center">
             <div className="flex items-center justify-center mb-4">
-              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
             </div>
             <DialogTitle className="text-2xl font-bold">Reset your password</DialogTitle>
             <DialogDescription>

@@ -22,11 +22,61 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+function getMetadataBase(): URL | undefined {
+  const raw = process.env.NEXT_PUBLIC_APP_BASE_URL;
+  if (!raw || raw.length === 0) {
+    return new URL("https://www.coinmind-ai.com");
+  }
+  try {
+    const value = raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://${raw}`;
+    return new URL(value);
+  } catch {
+    return new URL("https://www.coinmind-ai.com");
+  }
+}
+
 export const metadata: Metadata = {
-  title: "FinanceChat - AI-Powered Personal Finance Tracker",
+  metadataBase: getMetadataBase(),
+  title: "AI-Powered Personal Finance Tracker",
   description: "Track your finances with natural language. Chat your way to better financial health.",
-  keywords: ["finance", "personal finance", "AI", "chat", "expense tracking", "budget"],
-  authors: [{ name: "FinanceChat Team" }],
+  keywords: [
+    "Coinmind",
+    "personal finance",
+    "AI",
+    "finance copilot",
+    "budgeting",
+    "expense tracking",
+    "multi-currency",
+    "receipts OCR",
+    "analytics",
+    "CSV export",
+    "Excel export",
+  ],
+  authors: [{ name: "Coinmind" }],
+  openGraph: {
+    title: "AI-Powered Personal Finance Tracker",
+    description: "Track your finances with natural language. Chat your way to better financial health.",
+    url: "/",
+    siteName: "Coinmind",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Coinmind — AI Finance Copilot",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AI-Powered Personal Finance Tracker",
+    description: "Track your finances with natural language. Chat your way to better financial health.",
+    images: ["/opengraph-image"],
+  },
+  // File-based icons are provided via src/app/icon.svg and src/app/favicon.ico
+  category: "finance",
 };
 
 export const viewport: Viewport = {

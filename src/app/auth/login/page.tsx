@@ -71,7 +71,7 @@ function LoginForm() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
-            <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 mr-3" />
+            <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 mr-3 dark:invert" />
             <span className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
               Coinmind
             </span>

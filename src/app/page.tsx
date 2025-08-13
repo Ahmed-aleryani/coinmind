@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabaseClient } from "@/lib/auth-client"
 import { Mail, Lock, Eye, EyeOff, UserIcon } from "lucide-react"
+import { ChatInterface } from "@/components/chat/chat-interface"
 
 export default function Home() {
   const { user, loading, signInAnonymously } = useAuth()
@@ -52,10 +53,10 @@ export default function Home() {
     setIsSigningIn(true)
     try {
       await signInAnonymously()
-      router.push('/transactions')
+      // Stay on home; chat will render when auth state updates
     } catch (error) {
       console.error('Guest sign-in failed:', error)
-      router.push('/transactions')
+      // Remain on the page even on failure
     } finally {
       setIsSigningIn(false)
     }
@@ -159,7 +160,8 @@ export default function Home() {
       const { error } = await supabaseClient.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/transactions`,
+          // Return to home; chat shows once user is authenticated
+          redirectTo: `${window.location.origin}/auth/callback?next=/`,
         },
       });
 
@@ -171,112 +173,113 @@ export default function Home() {
     }
   }
 
-  // If user is authenticated, redirect to transactions as main page
-  if (user && !loading) {
-    router.replace('/transactions')
-    return (
-      <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
-        <div className="text-muted-foreground text-sm">Redirecting…</div>
-      </div>
-    )
-  }
-
   // Show welcome screen for guests
   return (
     <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-4xl mx-auto">
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center mb-6">
-            <img src="/coinmind-logo.svg" alt="Coinmind" className="w-16 h-16 mr-4" />
-            <span className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
-              Coinmind
-            </span>
+        {/* Marketing hero visible only for guests or while auth is loading */}
+        {(!user || loading) && (
+          <>
+            <div className="text-center mb-12">
+              <div className="flex items-center justify-center mb-6">
+                <img src="/coinmind-logo.svg" alt="Coinmind" className="w-16 h-16 mr-4 dark:invert" />
+                <span className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+                  Coinmind
+                </span>
+              </div>
+              <h1 className="text-4xl font-bold tracking-tight mb-4">
+                AI-Powered Personal Finance Tracker
+              </h1>
+              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+                Track your finances with natural language. Chat your way to better financial health.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6 mb-12">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center space-x-2">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                    <CardTitle>AI-Powered</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <CardDescription>
+                    Chat with AI to categorize expenses, analyze spending patterns, and get personalized financial insights.
+                  </CardDescription>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center space-x-2">
+                    <Shield className="h-5 w-5 text-primary" />
+                    <CardTitle>Secure & Private</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <CardDescription>
+                    Your financial data stays private and secure. Sign up to sync across devices or try as a guest.
+                  </CardDescription>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center space-x-2">
+                    <Zap className="h-5 w-5 text-primary" />
+                    <CardTitle>Lightning Fast</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <CardDescription>
+                    Get instant insights and real-time tracking with our optimized AI chat interface.
+                  </CardDescription>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <Button size="lg" className="w-full sm:w-auto" onClick={() => setIsSignupOpen(true)}>
+                Get Started
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+              
+              <Button variant="outline" size="lg" className="w-full sm:w-auto" onClick={() => setIsLoginOpen(true)}>
+                Sign In
+              </Button>
+              
+              <Button 
+                onClick={handleGuestSignIn}
+                disabled={isSigningIn}
+                variant="ghost" 
+                size="lg" 
+                className="w-full sm:w-auto"
+              >
+                {isSigningIn ? 'Setting up...' : 'Try as Guest'}
+              </Button>
+            </div>
+
+            <div className="text-center mt-8 text-sm text-muted-foreground">
+              <p>
+                By continuing, you agree to our{" "}
+                <Link href="#" className="text-primary hover:underline">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="#" className="text-primary hover:underline">
+                  Privacy Policy
+                </Link>
+              </p>
+            </div>
+          </>
+        )}
+        {/* Embedded Chat for signed-in users only */}
+        {user && !loading && (
+          <div className="mt-12 border rounded-lg">
+            <ChatInterface className="h-[520px]" />
           </div>
-          <h1 className="text-4xl font-bold tracking-tight mb-4">
-            AI-Powered Personal Finance Tracker
-          </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Track your finances with natural language. Chat your way to better financial health.
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-6 mb-12">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center space-x-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                <CardTitle>AI-Powered</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Chat with AI to categorize expenses, analyze spending patterns, and get personalized financial insights.
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center space-x-2">
-                <Shield className="h-5 w-5 text-primary" />
-                <CardTitle>Secure & Private</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Your financial data stays private and secure. Sign up to sync across devices or try as a guest.
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center space-x-2">
-                <Zap className="h-5 w-5 text-primary" />
-                <CardTitle>Lightning Fast</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Get instant insights and real-time tracking with our optimized AI chat interface.
-              </CardDescription>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-          <Button size="lg" className="w-full sm:w-auto" onClick={() => setIsSignupOpen(true)}>
-            Get Started
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-          
-          <Button variant="outline" size="lg" className="w-full sm:w-auto" onClick={() => setIsLoginOpen(true)}>
-            Sign In
-          </Button>
-          
-          <Button 
-            onClick={handleGuestSignIn}
-            disabled={isSigningIn}
-            variant="ghost" 
-            size="lg" 
-            className="w-full sm:w-auto"
-          >
-            {isSigningIn ? 'Setting up...' : 'Try as Guest'}
-          </Button>
-        </div>
-
-        <div className="text-center mt-8 text-sm text-muted-foreground">
-          <p>
-            By continuing, you agree to our{" "}
-            <Link href="#" className="text-primary hover:underline">
-              Terms of Service
-            </Link>{" "}
-            and{" "}
-            <Link href="#" className="text-primary hover:underline">
-              Privacy Policy
-            </Link>
-          </p>
-        </div>
+        )}
       </div>
 
       {/* Login Modal */}
@@ -284,7 +287,7 @@ export default function Home() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="text-center">
             <div className="flex items-center justify-center mb-4">
-              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
             </div>
             <DialogTitle className="text-2xl font-bold">Welcome back</DialogTitle>
             <DialogDescription>
@@ -435,7 +438,7 @@ export default function Home() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="text-center">
             <div className="flex items-center justify-center mb-4">
-              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
             </div>
             <DialogTitle className="text-2xl font-bold">Create your account</DialogTitle>
             <DialogDescription>
@@ -622,7 +625,7 @@ export default function Home() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="text-center">
             <div className="flex items-center justify-center mb-4">
-              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12" />
+              <img src="/coinmind-logo.svg" alt="Coinmind" className="w-12 h-12 dark:invert" />
             </div>
             <DialogTitle className="text-2xl font-bold">Reset your password</DialogTitle>
             <DialogDescription>
