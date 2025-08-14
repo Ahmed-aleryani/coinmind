@@ -10,14 +10,40 @@ export class DrizzleProfileRepository implements ProfileRepository {
 
   async create(profile: NewProfile): Promise<Profile> {
     try {
+      // Use an idempotent insert to avoid race-condition duplicate key errors
       const [result] = await this.db
         .insert(profiles)
         .values(profile)
+        .onConflictDoNothing({ target: profiles.id })
         .returning();
 
-      logger.info({ profileId: result.id }, 'Profile created successfully');
-      return result;
+      if (result) {
+        logger.info({ profileId: result.id }, 'Profile created successfully');
+        return result;
+      }
+
+      // If we hit a conflict (no row returned), fetch and return the existing profile
+      const existing = await this.findById(profile.id as string);
+      if (existing) {
+        logger.info({ profileId: profile.id }, 'Profile already exists; returning existing profile');
+        return existing;
+      }
+
+      throw new Error('Profile insert conflicted but existing profile not found');
     } catch (error) {
+      // Gracefully handle unique violations by returning existing profile
+      const errorCode = (error as any)?.code;
+      const message = (error as any)?.message ?? String(error);
+      const isUniqueViolation = errorCode === '23505' || /duplicate key|unique constraint/i.test(message);
+
+      if (isUniqueViolation) {
+        const existing = await this.findById(profile.id as string);
+        if (existing) {
+          logger.warn({ profileId: profile.id }, 'Unique violation on profile insert; returning existing profile');
+          return existing;
+        }
+      }
+
       logger.error({ error, profile }, 'Failed to create profile');
       throw new Error('Failed to create profile');
     }

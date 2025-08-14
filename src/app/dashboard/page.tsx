@@ -79,6 +79,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabaseClient } from "@/lib/auth-client";
+import { getAppBaseUrl } from "@/lib/utils";
 
 interface Transaction {
   id: string;
@@ -485,7 +486,7 @@ export default function DashboardPage() {
 
     try {
       const { error } = await supabaseClient.auth.resetPasswordForEmail(forgotPasswordEmail, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/`,
+        redirectTo: `${getAppBaseUrl()}/auth/callback?next=/`,
       });
 
       if (error) {
@@ -506,7 +507,7 @@ export default function DashboardPage() {
       const { error } = await supabaseClient.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/`,
+          redirectTo: `${getAppBaseUrl()}/auth/callback?next=/`,
         },
       });
 

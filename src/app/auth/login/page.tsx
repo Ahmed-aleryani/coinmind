@@ -1,53 +1,51 @@
 "use client"
 
-import { useState, Suspense } from "react"
+import { Suspense } from "react"
+import { useForm } from "react-hook-form"
+import { z } from "zod"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form"
 import { supabaseClient } from "@/lib/auth-client"
 import { getAppBaseUrl } from "@/lib/utils"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Mail, Lock, Github, Chrome } from "lucide-react"
 import Link from "next/link"
 
+const LoginSchema = z.object({
+  email: z.string().email({ message: "Please enter a valid email" }),
+  password: z.string().min(6, { message: "Password must be at least 6 characters" }),
+})
+
 function LoginForm() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const form = useForm<z.infer<typeof LoginSchema>>({
+    resolver: zodResolver(LoginSchema),
+    defaultValues: { email: "", password: "" },
+  })
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirectTo") || "/dashboard"
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-
+  const onSubmit = async (values: z.infer<typeof LoginSchema>) => {
     try {
       const { error } = await supabaseClient.auth.signInWithPassword({
-        email,
-        password,
+        email: values.email,
+        password: values.password,
       })
-
       if (error) {
-        setError(error.message)
-      } else {
-        router.push(redirectTo)
+        form.setError("root", { message: error.message })
+        return
       }
+      router.push(redirectTo)
     } catch {
-      setError("An unexpected error occurred")
-    } finally {
-      setLoading(false)
+      form.setError("root", { message: "An unexpected error occurred" })
     }
   }
 
   const handleOAuthLogin = async (provider: 'github' | 'google') => {
-    setLoading(true)
-    setError(null)
-
     try {
       const { error } = await supabaseClient.auth.signInWithOAuth({
         provider,
@@ -55,14 +53,24 @@ function LoginForm() {
           redirectTo: `${getAppBaseUrl()}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
         },
       })
-
       if (error) {
-        setError(error.message)
+        form.setError("root", { message: error.message })
       }
     } catch {
-      setError("An unexpected error occurred")
-    } finally {
-      setLoading(false)
+      form.setError("root", { message: "An unexpected error occurred" })
+    }
+  }
+
+  const handleGuestLogin = async () => {
+    try {
+      const { error } = await supabaseClient.auth.signInAnonymously()
+      if (error) {
+        form.setError("root", { message: error.message })
+        return
+      }
+      router.push(redirectTo)
+    } catch {
+      form.setError("root", { message: "An unexpected error occurred" })
     }
   }
 
@@ -82,47 +90,60 @@ function LoginForm() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {error && (
+          {form.formState.errors.root?.message && (
             <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{form.formState.errors.root.message}</AlertDescription>
             </Alert>
           )}
 
-          <form onSubmit={handleEmailLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="Enter your email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10"
-                  required
-                />
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <FormLabel htmlFor="email">Email</FormLabel>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Input id="email" type="email" placeholder="Enter your email" className="pl-10" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10"
-                  required
-                />
+              <div className="space-y-2">
+                <FormLabel htmlFor="password">Password</FormLabel>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Input id="password" type="password" placeholder="Enter your password" className="pl-10" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
-            </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in..." : "Sign in"}
-            </Button>
-          </form>
+              <div className="flex justify-end">
+                <Link href="/auth/reset" className="text-sm text-primary hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
+              <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? "Signing in..." : "Sign in"}
+              </Button>
+            </form>
+          </Form>
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
@@ -135,20 +156,11 @@ function LoginForm() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Button
-              variant="outline"
-              onClick={() => handleOAuthLogin('github')}
-              disabled={loading}
-              className="w-full"
-            >
-              <Github className="mr-2 h-4 w-4" />
-              GitHub
-            </Button>
+          <div className="grid grid-cols-1 gap-4">
             <Button
               variant="outline"
               onClick={() => handleOAuthLogin('google')}
-              disabled={loading}
+              disabled={form.formState.isSubmitting}
               className="w-full"
             >
               <Chrome className="mr-2 h-4 w-4" />
@@ -164,9 +176,9 @@ function LoginForm() {
           </div>
 
           <div className="text-center">
-            <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
-              Continue as guest
-            </Link>
+            <Button variant="ghost" className="text-sm" onClick={handleGuestLogin} disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? "Setting up..." : "Continue as guest"}
+            </Button>
           </div>
         </CardContent>
       </Card>
