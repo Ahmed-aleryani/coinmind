@@ -48,6 +48,8 @@ function SignupForm() {
         password: values.password,
         options: {
           data: { full_name: values.fullName },
+          // NOTE: The URL used in emailRedirectTo must be whitelisted in your Supabase project's dashboard
+          // under "Site URL" or "Redirect URLs" for email confirmation links to work as expected.
           emailRedirectTo: `${getAppBaseUrl()}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
         },
       })
