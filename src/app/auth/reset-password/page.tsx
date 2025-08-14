@@ -28,7 +28,7 @@ export default function ResetPasswordPage() {
   const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    // Supabase will populate session via URL hash. No manual parsing needed with detectSessionInUrl.
+    // Supabase automatically populates the session from the URL hash; no manual session parsing is required here.
   }, [])
 
   const onSubmit = async (values: z.infer<typeof Schema>) => {
